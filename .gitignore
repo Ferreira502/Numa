@@ -1,0 +1,42 @@
+# Ambiente virtual
+/.venv/
+
+# Python e ferramentas locais
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Configuracoes locais e credenciais
+.env
+.env.*
+*.key
+*.pem
+credenciais*
+credentials*
+secrets/
+.aws/
+
+# Textos locais de treinamento; manter as pastas no Git
+/dados/brutos/**
+!/dados/brutos/.gitkeep
+/dados/processados/**
+!/dados/processados/.gitkeep
+
+# Pesos e checkpoints; manter a pasta no Git
+/modelos/**
+!/modelos/.gitkeep
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# Temporarios e logs
+*.tmp
+*.temp
+*.log
+*~
+*.swp
+.DS_Store
+Thumbs.db

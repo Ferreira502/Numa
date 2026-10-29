@@ -33,4 +33,3 @@ Os arquivos Python estão vazios nesta etapa. Ainda não há comandos para trein
 5. Confira com `python -c "import sys, torch; print(sys.executable); print(torch.__version__); print(torch.rand(2, 2))"`. O caminho impresso deve apontar para `.venv`, seguido da versão do PyTorch e de uma matriz de números. Pode aparecer um aviso sobre NumPy ausente; a geração da matriz funciona sem ele, e não precisamos instalá-lo agora.
 
 Git servirá para registrar a evolução do código. Ainda não é necessário inicializar um repositório; nenhum arquivo foi adicionado ou registrado em commit.
-# Numa
