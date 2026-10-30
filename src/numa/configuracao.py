@@ -8,6 +8,8 @@ from pathlib import Path
 RAIZ_PROJETO = Path(__file__).resolve().parents[2]
 PASTA_DADOS_BRUTOS = RAIZ_PROJETO / "dados" / "brutos"
 ARQUIVO_DADOS_PROCESSADOS = RAIZ_PROJETO / "dados" / "processados" / "conversas.json"
+PASTA_BLOCOS = RAIZ_PROJETO / "dados" / "processados" / "conversas_blocos"
+EXEMPLOS_POR_BLOCO = 1000
 
 FRACAO_TREINO = 0.9
 
@@ -30,6 +32,7 @@ NUM_CAMADAS = 2
 DROPOUT = 0.1
 
 # Parametros de treinamento
+DISPOSITIVO_TREINO = "auto"
 TAMANHO_LOTE = 4
 PASSOS_TREINO = 500
 TAXA_APRENDIZADO = 0.001

@@ -4,6 +4,7 @@
 import argparse
 import hashlib
 import json
+import time
 from pathlib import Path
 
 import torch
@@ -13,6 +14,7 @@ from numa.configuracao import (
     ARQUIVO_CHECKPOINT,
     ARQUIVO_DADOS_PROCESSADOS,
     DIMENSAO_EMBEDDING,
+    DISPOSITIVO_TREINO,
     DROPOUT,
     INTERVALO_AVALIACAO,
     LOTES_AVALIACAO,
@@ -25,6 +27,17 @@ from numa.configuracao import (
     TAXA_APRENDIZADO,
 )
 from numa.modelo import ModeloNuma
+
+
+# Escolhe CUDA quando disponivel ou permite selecionar a CPU explicitamente
+def selecionar_dispositivo(preferencia: str = DISPOSITIVO_TREINO) -> torch.device:
+    if preferencia not in ("auto", "cpu", "cuda"):
+        raise ValueError("Use auto, cpu ou cuda como dispositivo")
+    if preferencia == "cuda" and not torch.cuda.is_available():
+        raise ValueError("CUDA nao esta disponivel nesta instalacao, use --dispositivo cpu")
+    if preferencia == "auto":
+        preferencia = "cuda" if torch.cuda.is_available() else "cpu"
+    return torch.device(preferencia)
 
 
 # Identifica as fontes para permitir sorteio e avaliacao sem favorecer o maior dataset
@@ -116,6 +129,10 @@ def carregar_conversas(dados: dict) -> tuple[list[dict], list[dict]]:
 
 # Calcula a media do erro de cada resposta e depois a media entre exemplos do lote
 def calcular_erro(modelo: ModeloNuma, entrada: torch.Tensor, alvos: torch.Tensor):
+    # Os exemplos ficam na RAM e somente o lote atual acompanha o modelo na GPU
+    dispositivo = next(modelo.parameters()).device
+    entrada = entrada.to(dispositivo)
+    alvos = alvos.to(dispositivo)
     logits = modelo(entrada)
     # A entropia cruzada recebe logits diretamente, sem aplicar softmax antes
     erros = F.cross_entropy(
@@ -173,6 +190,10 @@ def retomar_treinamento(caminho: Path, modelo: ModeloNuma, otimizador, dados: di
         grupo["lr"] = TAXA_APRENDIZADO
     if "estado_aleatorio" in estado:
         torch.set_rng_state(estado["estado_aleatorio"])
+    # CUDA usa um gerador separado, que tambem precisa ser restaurado para retomar
+    dispositivo = next(modelo.parameters()).device
+    if dispositivo.type == "cuda" and estado.get("estado_aleatorio_cuda") is not None:
+        torch.cuda.set_rng_state(estado["estado_aleatorio_cuda"], device=dispositivo)
     return estado
 
 
@@ -183,9 +204,14 @@ def principal() -> None:
     analisador_argumentos.add_argument("--saida", type=Path, default=ARQUIVO_CHECKPOINT)
     analisador_argumentos.add_argument("--passos", type=int, default=PASSOS_TREINO)
     analisador_argumentos.add_argument("--reiniciar", action="store_true")
+    analisador_argumentos.add_argument("--dispositivo", choices=("auto", "cpu", "cuda"), default=DISPOSITIVO_TREINO)
     argumentos = analisador_argumentos.parse_args()
     if argumentos.passos < 1:
         analisador_argumentos.error("A quantidade de passos deve ser positiva")
+    try:
+        dispositivo = selecionar_dispositivo(argumentos.dispositivo)
+    except ValueError as erro:
+        analisador_argumentos.error(str(erro))
     torch.manual_seed(SEMENTE)
     torch.set_num_threads(min(4, torch.get_num_threads()))
     try:
@@ -204,7 +230,8 @@ def principal() -> None:
         "num_camadas": NUM_CAMADAS,
         "dropout": DROPOUT,
     }
-    modelo = ModeloNuma(**configuracao)
+    # Move a rede antes de criar o AdamW para que os parametros usem o dispositivo correto
+    modelo = ModeloNuma(**configuracao).to(dispositivo)
     otimizador = torch.optim.AdamW(modelo.parameters(), lr=TAXA_APRENDIZADO, weight_decay=0.01)
     caminho_ultimo = argumentos.saida.with_name(argumentos.saida.stem + "_ultimo" + argumentos.saida.suffix)
     caminho_retomada = caminho_ultimo if caminho_ultimo.exists() else argumentos.saida
@@ -225,10 +252,12 @@ def principal() -> None:
     if estado_anterior.get("assinatura_dados") == assinatura and argumentos.saida.exists() and estado_anterior.get("objetivo") == "respostas_balanceadas_v1":
         melhor_erro = estado_anterior.get("melhor_erro_validacao", estado_anterior["erro_validacao"])
         melhor_passo = estado_anterior.get("melhor_passo", passo_inicial)
-    print(f"CPU | contexto: {TAMANHO_CONTEXTO} | lote: {TAMANHO_LOTE} | mais {argumentos.passos} passos", flush=True)
+    nome_dispositivo = f"GPU: {torch.cuda.get_device_name(dispositivo)}" if dispositivo.type == "cuda" else "CPU"
+    print(f"{nome_dispositivo} | contexto: {TAMANHO_CONTEXTO} | lote: {TAMANHO_LOTE} | mais {argumentos.passos} passos", flush=True)
     print(f"Conversas: {len(treino)} de treino e {len(validacao)} de validacao", flush=True)
     print("Fontes com a mesma chance de sorteio e respostas com o mesmo peso no erro", flush=True)
 
+    inicio_execucao = time.perf_counter()
     for deslocamento in range(argumentos.passos + 1):
         passo = passo_inicial + deslocamento
         if deslocamento > 0:
@@ -259,6 +288,7 @@ def principal() -> None:
                 "estado_modelo": modelo.state_dict(),
                 "estado_otimizador": otimizador.state_dict(),
                 "estado_aleatorio": torch.get_rng_state(),
+                "estado_aleatorio_cuda": torch.cuda.get_rng_state(dispositivo) if dispositivo.type == "cuda" else None,
                 "configuracao_modelo": configuracao,
                 "vocabulario": dados["vocabulario"],
                 "marcadores": dados["marcadores"],
@@ -277,6 +307,7 @@ def principal() -> None:
     print(f"Melhor validacao: {melhor_erro:.4f} no passo {melhor_passo}")
     print(f"Pesos usados pelo chat: {argumentos.saida}")
     print(f"Progresso para continuar treinando: {caminho_ultimo}")
+    print(f"Tempo total com avaliacao e salvamento: {time.perf_counter() - inicio_execucao:.1f} segundos")
 
 
 if __name__ == "__main__":

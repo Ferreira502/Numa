@@ -21,6 +21,37 @@ from numa.configuracao import (
 from numa.tokenizer import TokenizadorCaracteres
 
 
+# Extrai uma pergunta e sua resposta sem aceitar rotulos ambiguos no mesmo bloco
+def extrair_par(bloco: str):
+    if bloco.count(MARCADOR_RESPOSTA) != 1:
+        return None, None
+    pergunta, _, resposta = bloco.partition(MARCADOR_RESPOSTA)
+    return pergunta.strip(), resposta.strip()
+
+
+# Le o TXT linha por linha e guarda somente uma conversa por vez
+def iterar_pares_txt(arquivo: Path):
+    padrao = re.compile(r"^Usu(?:a|\u00e1)rio: ")
+    linhas = []
+    iniciado = False
+    anterior_vazia = True
+    with arquivo.open(encoding="utf-8-sig") as entrada:
+        for linha in entrada:
+            inicio = padrao.match(linha)
+            if inicio and (not iniciado or anterior_vazia):
+                if iniciado:
+                    yield extrair_par("".join(linhas))
+                linhas = [linha[inicio.end():]]
+                iniciado = True
+            elif iniciado:
+                linhas.append(linha)
+            elif linha.strip():
+                raise ValueError(f"Formato de conversa nao reconhecido em {arquivo.name}")
+            anterior_vazia = not linha.strip()
+    if iniciado:
+        yield extrair_par("".join(linhas))
+
+
 # Percorre uma pasta TXT ou um arquivo TXT ou JSONL sem carregar todas as fontes na memoria
 def iterar_pares(caminho: Path):
     if caminho.is_dir():
@@ -48,19 +79,7 @@ def iterar_pares(caminho: Path):
                     else:
                         yield registro.get("pergunta"), registro.get("resposta")
         elif arquivo.suffix.lower() == ".txt":
-            texto = arquivo.read_text(encoding="utf-8-sig").strip()
-            if not texto:
-                continue
-            # Aceita o rotulo Usuario com ou sem acento nos dados originais
-            blocos = re.split(r"(?:\A|\n\n)Usu(?:a|\u00e1)rio: ", texto)
-            if blocos[0] or len(blocos) < 2:
-                raise ValueError(f"Formato de conversa nao reconhecido em {arquivo.name}")
-            for bloco in blocos[1:]:
-                if bloco.count(MARCADOR_RESPOSTA) != 1:
-                    yield None, None
-                else:
-                    pergunta, _, resposta = bloco.partition(MARCADOR_RESPOSTA)
-                    yield pergunta, resposta
+            yield from iterar_pares_txt(arquivo)
         else:
             raise ValueError(f"Use arquivos TXT ou JSONL: {arquivo.name}")
 
