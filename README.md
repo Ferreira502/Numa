@@ -22,7 +22,23 @@ Um modelo pequeno terá capacidade limitada. Alcançar a qualidade de sistemas c
 | `requirements.txt` | Dependências Python necessárias. |
 | `.gitignore` | Arquivos locais que não entram no versionamento. |
 
-Os arquivos Python estão vazios nesta etapa. Ainda não há comandos para treinar ou conversar.
+O tokenizer por caracteres está implementado. Os demais arquivos Python ainda estão vazios; ainda não há comandos para treinar ou conversar.
+
+## Primeiro componente: tokenizer
+
+O `TokenizadorCaracteres` cria um vocabulário a partir dos caracteres de um texto. `encode` converte o texto em uma lista de IDs; `decode` faz o caminho inverso. Um caractere ausente do vocabulário gera um erro claro. Para experimentar no Git Bash, na raiz do projeto:
+
+```bash
+PYTHONPATH=src python -c 'from numa.tokenizer import TokenizadorCaracteres; t = TokenizadorCaracteres("oi, Numa!"); ids = t.encode("oi, Numa!"); print(ids); print(t.decode(ids))'
+```
+
+O último resultado deve ser `oi, Numa!`. Para digitar seus próprios textos no terminal, execute:
+
+```bash
+python src/numa/tokenizer.py
+```
+
+Digite uma frase e pressione Enter. O programa mostra o vocabulário, os IDs e o texto reconstruído. Pressione Enter em uma linha vazia para sair. O vocabulário é criado novamente para cada frase; esta experiência ainda não treina o modelo nem conversa com uma IA.
 
 ## Preparação no Windows com Git Bash
 
