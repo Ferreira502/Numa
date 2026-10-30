@@ -3,13 +3,48 @@
 
 import argparse
 import math
+import os
+import shutil
+import sys
+import textwrap
+import warnings
 from pathlib import Path
 
-import torch
+# Este chat nao usa a integracao com NumPy, entao omite somente esse aviso opcional
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", message="Failed to initialize NumPy: No module named 'numpy'.*", category=UserWarning)
+    import torch
 
 from numa.configuracao import ARQUIVO_CHECKPOINT, CARACTERES_GERADOS, TEMPERATURA
 from numa.modelo import ModeloNuma
 from numa.tokenizer import TokenizadorCaracteres
+
+
+# Adiciona cores somente em terminais interativos que permitem essa formatacao
+def colorir(texto: str, cor: str) -> str:
+    if sys.stdout.isatty() and os.environ.get("TERM") != "dumb" and "NO_COLOR" not in os.environ:
+        return f"\033[{cor}m{texto}\033[0m"
+    return texto
+
+
+# Limpa a tela interativa e apresenta o cabecalho de uma nova conversa
+def exibir_cabecalho() -> None:
+    if sys.stdout.isatty() and os.environ.get("TERM") != "dumb":
+        print("\033[2J\033[H", end="", flush=True)
+    print(colorir("NUMA", "1;36"))
+    print(colorir("Chat experimental", "2"))
+    print()
+    print(colorir("/limpar  Nova conversa     /sair  Encerrar", "2"))
+    print(colorir("-" * min(60, shutil.get_terminal_size().columns), "2"))
+
+
+# Exibe a resposta com espacos e quebra de linhas ajustada a largura do terminal
+def exibir_resposta(resposta: str) -> None:
+    print()
+    print(colorir("Numa", "1;36"))
+    largura = max(20, min(80, shutil.get_terminal_size().columns - 2))
+    for linha in resposta.splitlines():
+        print(textwrap.fill(linha, width=largura, initial_indent="  ", subsequent_indent="  ", break_long_words=False, break_on_hyphens=False))
 
 
 # Reconstroi o modelo, o tokenizador e os marcadores do treinamento de conversas
@@ -101,16 +136,17 @@ def principal() -> None:
         raise SystemExit(f"Nao foi possivel carregar o modelo: {erro}") from erro
 
     historico = []
-    print("Numa pronta para conversar com os pesos treinados")
-    print("Digite /sair para encerrar ou /limpar para iniciar uma nova conversa")
+    exibir_cabecalho()
     while True:
         try:
-            pergunta = input("Voce: ").strip()
+            print()
+            pergunta = input(colorir("Voce > ", "1;32")).strip()
             if pergunta == "/sair":
+                print(colorir("\nConversa encerrada", "2"))
                 break
             if pergunta == "/limpar":
                 historico.clear()
-                print("Historico limpo")
+                exibir_cabecalho()
                 continue
             if not pergunta:
                 continue
@@ -119,14 +155,14 @@ def principal() -> None:
                 modelo, tokenizador, contexto, marcadores, argumentos.caracteres, argumentos.temperatura
             )
             if not resposta:
-                print("O modelo encerrou a geracao sem produzir uma resposta")
+                print(colorir("\nO modelo encerrou a geracao sem produzir uma resposta", "33"))
                 continue
-            print("Numa:", resposta)
+            exibir_resposta(resposta)
             historico.append((pergunta, resposta))
             # Limita a memoria do terminal, alem do limite aplicado ao contexto de cada resposta
             historico = historico[-modelo.tamanho_contexto:]
         except ValueError as erro:
-            print(f"Nao foi possivel responder: {erro}")
+            print(colorir(f"\nNao foi possivel responder: {erro}", "33"))
         except (EOFError, KeyboardInterrupt):
             print()
             break

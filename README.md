@@ -1,51 +1,47 @@
 # Numa
 
-Numa será um projeto educacional de geração de texto em Python. A ideia é treinar do zero um Transformer decoder pequeno e, aos poucos, transformá-lo em um assistente para conversa. Não usaremos API de IA nem pesos pré-treinados. O PyTorch fornecerá tensores, camadas e cálculo de gradientes.
+Numa e um projeto educacional de inteligencia artificial generativa, desenvolvido em Python com PyTorch, para estudar como uma rede neural aprende a produzir respostas a partir de exemplos de conversa
 
-Um modelo pequeno terá capacidade limitada. Alcançar a qualidade de sistemas como GPT ou Claude exige volumes de dados, computação e trabalho de engenharia muito maiores.
+O modelo utiliza uma arquitetura Transformer decoder pequena, com pesos inicializados aleatoriamente e treinados do zero, e realiza a geracao localmente, sem chamadas a APIs de IA e sem usar um modelo pre-treinado como base
 
-## Estrutura
+## Proposito
 
-| Caminho | Função futura |
-| --- | --- |
-| `src/numa/configuracao.py` | Parâmetros do modelo, treinamento e caminhos. |
-| `src/numa/preparar_dados.py` | Leitura, preparo e divisão dos textos em treino e validação. |
-| `src/numa/tokenizer.py` | Conversão de texto em números e vice-versa, inicialmente por caracteres. |
-| `src/numa/modelo.py` | Transformer decoder com atenção causal. |
-| `src/numa/treinar.py` | Treinamento, avaliação e salvamento dos pesos. |
-| `src/numa/chat.py` | Carregamento do modelo e conversa no terminal. |
-| `src/numa/__init__.py` | Marca `numa` como pacote Python. |
-| `dados/brutos/` | Textos originais locais. |
-| `dados/processados/` | Dados preparados localmente. |
-| `modelos/` | Pesos e checkpoints locais. |
-| `docs/` | Anotações e explicações futuras. |
-| `requirements.txt` | Dependências Python necessárias. |
-| `.gitignore` | Arquivos locais que não entram no versionamento. |
+O objetivo e compreender o caminho entre uma mensagem escrita e uma resposta gerada: como o texto se torna uma representacao numerica, como a rede utiliza o contexto e como o treinamento modifica seus parametros
 
-O tokenizer por caracteres está implementado. Os demais arquivos Python ainda estão vazios; ainda não há comandos para treinar ou conversar.
+A evolucao da Numa e guiada por experimentos, observacao dos erros e comparacao entre perguntas conhecidas e perguntas que ficaram fora do treinamento
 
-## Primeiro componente: tokenizer
+## Como funciona
 
-O `TokenizadorCaracteres` cria um vocabulário a partir dos caracteres de um texto. `encode` converte o texto em uma lista de IDs; `decode` faz o caminho inverso. Um caractere ausente do vocabulário gera um erro claro. Para experimentar no Git Bash, na raiz do projeto:
+A tokenizacao inicial atribui um identificador numerico a cada caractere, incluindo letras, espacos e pontuacao
 
-```bash
-PYTHONPATH=src python -c 'from numa.tokenizer import TokenizadorCaracteres; t = TokenizadorCaracteres("oi, Numa!"); ids = t.encode("oi, Numa!"); print(ids); print(t.decode(ids))'
-```
+Os embeddings transformam esses identificadores e suas posicoes em vetores aprendidos pela rede, enquanto os blocos Transformer combinam atencao causal e camadas neurais para relacionar as informacoes disponiveis no contexto
 
-O último resultado deve ser `oi, Numa!`. Para digitar seus próprios textos no terminal, execute:
+Ao receber uma mensagem, a Numa calcula as probabilidades do proximo caractere e repete esse processo para construir uma resposta, com a temperatura controlando a variacao dessa escolha
 
-```bash
-python src/numa/tokenizer.py
-```
+## Como aprende
 
-Digite uma frase e pressione Enter. O programa mostra o vocabulário, os IDs e o texto reconstruído. Pressione Enter em uma linha vazia para sair. O vocabulário é criado novamente para cada frase; esta experiência ainda não treina o modelo nem conversa com uma IA.
+O treinamento utiliza exemplos de perguntas e respostas, com atencao especial a previsao da resposta e de seu marcador de encerramento
 
-## Preparação no Windows com Git Bash
+A entropia cruzada mede o erro das previsoes, o backpropagation calcula os gradientes e o otimizador AdamW ajusta os pesos e biases
 
-1. Confira o Python com `py -V` e o Git com `git --version`. Se algum estiver ausente, instale-o pelos sites oficiais. O PyTorch atual oferece suporte a Python 3.14 no Windows de 64 bits; consulte [a página de instalação do PyTorch](https://pytorch.org/get-started/locally/) caso use outra versão. Nesta máquina, Python 3.14.6 de 64 bits e Git já estão instalados.
-2. No VS Code, instale a extensão **Python**, da Microsoft (`ms-python.python`), na aba Extensions. Ela fornece seleção do interpretador, execução e depuração de Python. Depois, selecione o interpretador `Numa/.venv/Scripts/python.exe` com **Python: Select Interpreter**.
-3. Na raiz do projeto, crie o ambiente virtual apenas se `.venv` ainda não existir: `py -m venv .venv`. Ative-o no Git Bash com `source .venv/Scripts/activate`. O ambiente separa as bibliotecas deste projeto das globais. Neste projeto, a `.venv` já foi criada; basta ativá-la.
-4. Com o ambiente ativo, instale somente o PyTorch para CPU, caso ainda não esteja instalado: `python -m pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cpu`. `torch` é o nome do pacote PyTorch; a variante CPU evita baixar bibliotecas CUDA desnecessárias neste início. Nesta máquina, PyTorch 2.15.0+cpu já foi instalado. Para usar GPU mais tarde, consulte o seletor no site do PyTorch.
-5. Confira com `python -c "import sys, torch; print(sys.executable); print(torch.__version__); print(torch.rand(2, 2))"`. O caminho impresso deve apontar para `.venv`, seguido da versão do PyTorch e de uma matriz de números. Pode aparecer um aviso sobre NumPy ausente; a geração da matriz funciona sem ele, e não precisamos instalá-lo agora.
+Os experimentos combinam conversas basicas, exemplos humanos do OpenAssistant e dados sinteticos em portugues derivados de respostas do GPT4
 
-Git servirá para registrar a evolução do código. Ainda não é necessário inicializar um repositório; nenhum arquivo foi adicionado ou registrado em commit.
+Esses textos sao usados como exemplos de treinamento, sem carregar os pesos dos modelos que os produziram
+
+As fontes sao balanceadas durante o treinamento, e perguntas iguais permanecem na mesma parte da divisao entre treino e validacao
+
+## Estagio atual
+
+A Numa ja realiza treinamento, avaliacao, salvamento e retomada dos pesos, alem de interacao por um chat no terminal com contexto recente
+
+Em experimentos controlados, o modelo conseguiu aprender respostas para exemplos conhecidos, mas as respostas a perguntas novas ainda apresentam erros, repeticoes e sequencias sem sentido
+
+O erro numerico e acompanhado junto da qualidade do texto gerado, pois uma perda menor ou a reproducao de uma resposta conhecida, por si so, nao demonstra capacidade de conversar de forma geral
+
+## Limites e evolucao
+
+A Numa ainda e um modelo pequeno e experimental, com contexto limitado e forte tendencia a memorizar conjuntos reduzidos de exemplos, cujas respostas nao devem ser tratadas como uma fonte confiavel de informacao
+
+O objetivo e ampliar gradualmente a coerencia, a capacidade de responder a novas formulacoes e a continuidade das conversas, investigando a qualidade dos dados, a arquitetura e o processo de treinamento
+
+Alcancar a qualidade de assistentes como GPT ou Claude exige recursos de dados, computacao e engenharia muito maiores que os utilizados neste projeto

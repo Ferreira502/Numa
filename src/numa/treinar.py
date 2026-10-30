@@ -1,5 +1,5 @@
 # Treina o Numa para responder mensagens usando entropia cruzada, backpropagation e AdamW
-# Retoma o ultimo treinamento compativel e salva os melhores pesos para o chat
+# Equilibra as fontes, retoma o treinamento compativel e salva os melhores pesos para o chat
 
 import argparse
 import hashlib
@@ -27,25 +27,36 @@ from numa.configuracao import (
 from numa.modelo import ModeloNuma
 
 
-# Sorteia trechos dentro de conversas e exclui perguntas e preenchimentos do erro
+# Identifica as fontes para permitir sorteio e avaliacao sem favorecer o maior dataset
+def agrupar_por_fonte(exemplos: list[dict]) -> dict[str, list[dict]]:
+    if not exemplos:
+        raise ValueError("Nao ha exemplos para formar um lote")
+    grupos = {}
+    for exemplo in exemplos:
+        grupos.setdefault(exemplo.get("fonte", "personalizada"), []).append(exemplo)
+    return grupos
+
+
+# Sorteia primeiro a fonte e depois uma conversa, dando a cada fonte a mesma chance
 def criar_lote(exemplos: list[dict], gerador: torch.Generator | None = None):
     entrada = torch.zeros((TAMANHO_LOTE, TAMANHO_CONTEXTO), dtype=torch.long)
     alvos = torch.full_like(entrada, -100)
-    indices = torch.randint(len(exemplos), (TAMANHO_LOTE,), generator=gerador)
-    for linha, indice in enumerate(indices.tolist()):
-        exemplo = exemplos[indice]
+    grupos = agrupar_por_fonte(exemplos)
+    fontes = sorted(grupos)
+    fontes_sorteadas = torch.randint(len(fontes), (TAMANHO_LOTE,), generator=gerador)
+    for linha, indice_fonte in enumerate(fontes_sorteadas.tolist()):
+        grupo = grupos[fontes[indice_fonte]]
+        indice = torch.randint(len(grupo), (1,), generator=gerador).item()
+        exemplo = grupo[indice]
         ids = exemplo["ids"]
         inicio_resposta = exemplo["inicio_resposta"]
-        # O ultimo alvo sempre pertence a resposta ou ao marcador de fim
-        ultimo_alvo = torch.randint(inicio_resposta, len(ids), (1,), generator=gerador).item()
-        fim = ultimo_alvo + 1
-        inicio = max(0, fim - TAMANHO_CONTEXTO - 1)
-        comprimento = fim - inicio - 1
-        entrada[linha, :comprimento] = ids[inicio:fim - 1]
-        alvos_trecho = ids[inicio + 1:fim].clone()
-        # Os alvos estao deslocados em um caractere em relacao a entrada
-        posicoes_alvos = torch.arange(inicio + 1, fim)
-        alvos_trecho[posicoes_alvos < inicio_resposta] = -100
+        if len(ids) > TAMANHO_CONTEXTO + 1:
+            raise ValueError("A conversa nao cabe no contexto, execute novamente numa.preparar_conversas")
+        comprimento = len(ids) - 1
+        entrada[linha, :comprimento] = ids[:-1]
+        alvos_trecho = ids[1:].clone()
+        # O primeiro alvo da resposta fica uma posicao antes de seu indice no texto
+        alvos_trecho[:inicio_resposta - 1] = -100
         alvos[linha, :comprimento] = alvos_trecho
     # O preenchimento fica no final e nao afeta posicoes anteriores pela mascara causal
     return entrada, alvos
@@ -86,6 +97,8 @@ def carregar_conversas(dados: dict) -> tuple[list[dict], list[dict]]:
         for exemplo in dados[nome]:
             valores = exemplo["ids"]
             ids = validar_ids(valores, len(vocabulario))
+            if len(ids) > TAMANHO_CONTEXTO + 1:
+                raise ValueError("Os dados antigos contem conversas longas, execute novamente numa.preparar_conversas")
             inicio = exemplo["inicio_resposta"]
             if type(inicio) is not int or not len(ids_usuario) + len(ids_resposta) < inicio < len(ids) - len(ids_fim):
                 raise ValueError("O inicio da resposta esta fora da conversa")
@@ -93,34 +106,45 @@ def carregar_conversas(dados: dict) -> tuple[list[dict], list[dict]]:
                 raise ValueError("O inicio da resposta nao corresponde aos marcadores salvos")
             if valores[-len(ids_fim):] != ids_fim:
                 raise ValueError("A conversa esta sem o marcador de fim")
-            exemplos.append({"ids": ids, "inicio_resposta": inicio})
+            fonte = exemplo.get("fonte", "personalizada")
+            if not isinstance(fonte, str) or not fonte:
+                raise ValueError("A fonte do exemplo deve ser um nome nao vazio")
+            exemplos.append({"ids": ids, "inicio_resposta": inicio, "fonte": fonte})
         partes.append(exemplos)
     return partes[0], partes[1]
 
 
-# Compara as previsoes com os caracteres da resposta, ignorando os alvos marcados com -100
+# Calcula a media do erro de cada resposta e depois a media entre exemplos do lote
 def calcular_erro(modelo: ModeloNuma, entrada: torch.Tensor, alvos: torch.Tensor):
     logits = modelo(entrada)
     # A entropia cruzada recebe logits diretamente, sem aplicar softmax antes
-    return F.cross_entropy(logits.reshape(-1, logits.shape[-1]), alvos.reshape(-1), ignore_index=-100)
+    erros = F.cross_entropy(
+        logits.reshape(-1, logits.shape[-1]), alvos.reshape(-1), ignore_index=-100, reduction="none"
+    ).reshape_as(alvos)
+    quantidades = (alvos != -100).sum(dim=1)
+    if (quantidades == 0).any():
+        raise ValueError("Cada exemplo precisa conter pelo menos um alvo de resposta")
+    # Uma resposta longa tem o mesmo peso que uma curta no calculo final
+    return (erros.sum(dim=1) / quantidades).mean()
 
 
-# Avalia trechos fixos de treino e validacao sem dropout e sem alterar os pesos
+# Avalia cada fonte separadamente e combina as medias com o mesmo peso por fonte
 @torch.no_grad()
 def avaliar(modelo: ModeloNuma, treino: list[dict], validacao: list[dict]) -> dict:
     estava_treinando = modelo.training
     modelo.eval()
-    resultados = {}
+    resultados = {"fontes": {}}
     gerador = torch.Generator().manual_seed(SEMENTE + 1)
     for nome, exemplos in (("treino", treino), ("validacao", validacao)):
-        soma_erros = 0.0
-        quantidade_alvos = 0
-        for _ in range(LOTES_AVALIACAO):
-            entrada, alvos = criar_lote(exemplos, gerador)
-            quantidade = (alvos != -100).sum().item()
-            soma_erros += calcular_erro(modelo, entrada, alvos).item() * quantidade
-            quantidade_alvos += quantidade
-        resultados[nome] = soma_erros / quantidade_alvos
+        erros_fontes = {}
+        for fonte, grupo in sorted(agrupar_por_fonte(exemplos).items()):
+            soma_erros = 0.0
+            for _ in range(LOTES_AVALIACAO):
+                entrada, alvos = criar_lote(grupo, gerador)
+                soma_erros += calcular_erro(modelo, entrada, alvos).item()
+            erros_fontes[fonte] = soma_erros / LOTES_AVALIACAO
+        resultados["fontes"][nome] = erros_fontes
+        resultados[nome] = sum(erros_fontes.values()) / len(erros_fontes)
     modelo.train(estava_treinando)
     return resultados
 
@@ -197,12 +221,13 @@ def principal() -> None:
     passo_inicial = estado_anterior.get("passo", 0)
     melhor_erro = float("inf")
     melhor_passo = passo_inicial
-    # Se os dados mudaram, os erros de validacao antigos nao sao comparaveis
-    if estado_anterior.get("assinatura_dados") == assinatura and argumentos.saida.exists():
+    # Mudancas nos dados ou no calculo do erro exigem uma nova referencia de validacao
+    if estado_anterior.get("assinatura_dados") == assinatura and argumentos.saida.exists() and estado_anterior.get("objetivo") == "respostas_balanceadas_v1":
         melhor_erro = estado_anterior.get("melhor_erro_validacao", estado_anterior["erro_validacao"])
         melhor_passo = estado_anterior.get("melhor_passo", passo_inicial)
     print(f"CPU | contexto: {TAMANHO_CONTEXTO} | lote: {TAMANHO_LOTE} | mais {argumentos.passos} passos", flush=True)
     print(f"Conversas: {len(treino)} de treino e {len(validacao)} de validacao", flush=True)
+    print("Fontes com a mesma chance de sorteio e respostas com o mesmo peso no erro", flush=True)
 
     for deslocamento in range(argumentos.passos + 1):
         passo = passo_inicial + deslocamento
@@ -221,12 +246,15 @@ def principal() -> None:
         if deslocamento % INTERVALO_AVALIACAO == 0 or deslocamento == argumentos.passos:
             erros = avaliar(modelo, treino, validacao)
             print(f"Passo {passo:5d} | treino: {erros['treino']:.4f} | validacao: {erros['validacao']:.4f}", flush=True)
+            for fonte, erro_validacao in erros["fontes"]["validacao"].items():
+                print(f"  Validacao {fonte}: {erro_validacao:.4f}", flush=True)
             melhorou = erros["validacao"] < melhor_erro
             if melhorou:
                 melhor_erro = erros["validacao"]
                 melhor_passo = passo
             estado = {
                 "formato": "conversas_v1",
+                "objetivo": "respostas_balanceadas_v1",
                 "passo": passo,
                 "estado_modelo": modelo.state_dict(),
                 "estado_otimizador": otimizador.state_dict(),
@@ -237,6 +265,7 @@ def principal() -> None:
                 "assinatura_dados": assinatura,
                 "erro_treino": erros["treino"],
                 "erro_validacao": erros["validacao"],
+                "erros_por_fonte": erros["fontes"],
                 "melhor_erro_validacao": melhor_erro,
                 "melhor_passo": melhor_passo,
             }

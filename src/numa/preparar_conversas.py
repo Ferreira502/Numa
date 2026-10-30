@@ -1,5 +1,5 @@
-# Seleciona pares de pergunta e resposta e separa conversas completas para treino e validacao
-# Salva IDs e o inicio de cada resposta para o futuro treinamento focado nas respostas
+# Reune as fontes de conversa, seleciona pares curtos e separa treino e validacao
+# Salva IDs e o inicio de cada resposta para treinar a resposta inteira e seu marcador de fim
 
 import argparse
 import json
@@ -10,51 +10,91 @@ from pathlib import Path
 from numa.configuracao import (
     ARQUIVO_DADOS_PROCESSADOS,
     FRACAO_TREINO,
+    FONTES_CONVERSAS,
     LIMITE_CONVERSAS,
     MARCADOR_FIM,
     MARCADOR_RESPOSTA,
     MARCADOR_USUARIO,
-    PASTA_CONVERSAS,
     SEMENTE,
+    TAMANHO_CONTEXTO,
 )
 from numa.tokenizer import TokenizadorCaracteres
 
 
-# Le pares dos lotes TXT ate o limite, mantendo cada pergunta ligada a sua resposta
-def ler_conversas(pasta: Path, limite: int) -> list[tuple[str, str]]:
+# Percorre uma pasta TXT ou um arquivo TXT ou JSONL sem carregar todas as fontes na memoria
+def iterar_pares(caminho: Path):
+    if caminho.is_dir():
+        arquivos = sorted(caminho.glob("*.txt"))
+    elif caminho.is_file():
+        arquivos = [caminho]
+    else:
+        raise ValueError(f"Fonte de conversas nao encontrada: {caminho}")
+    if not arquivos:
+        raise ValueError(f"Nenhum arquivo TXT encontrado em {caminho}")
+
+    for arquivo in arquivos:
+        if arquivo.suffix.lower() == ".jsonl":
+            # O JSONL do OpenAssistant ja preserva os pares e seus identificadores
+            with arquivo.open(encoding="utf-8-sig") as entrada:
+                for numero, linha in enumerate(entrada, 1):
+                    if not linha.strip():
+                        continue
+                    try:
+                        registro = json.loads(linha)
+                    except ValueError as erro:
+                        raise ValueError(f"JSON invalido em {arquivo.name}, linha {numero}") from erro
+                    if not isinstance(registro, dict):
+                        yield None, None
+                    else:
+                        yield registro.get("pergunta"), registro.get("resposta")
+        elif arquivo.suffix.lower() == ".txt":
+            texto = arquivo.read_text(encoding="utf-8-sig").strip()
+            if not texto:
+                continue
+            # Aceita o rotulo Usuario com ou sem acento nos dados originais
+            blocos = re.split(r"(?:\A|\n\n)Usu(?:a|\u00e1)rio: ", texto)
+            if blocos[0] or len(blocos) < 2:
+                raise ValueError(f"Formato de conversa nao reconhecido em {arquivo.name}")
+            for bloco in blocos[1:]:
+                if bloco.count(MARCADOR_RESPOSTA) != 1:
+                    yield None, None
+                else:
+                    pergunta, _, resposta = bloco.partition(MARCADOR_RESPOSTA)
+                    yield pergunta, resposta
+        else:
+            raise ValueError(f"Use arquivos TXT ou JSONL: {arquivo.name}")
+
+
+# Filtra pares completos e usa um conjunto comum para remover repeticoes entre as fontes
+def ler_conversas(caminho: Path, limite: int, pares_vistos: set | None = None) -> tuple[list[tuple[str, str]], dict]:
     if limite < 2:
         raise ValueError("Selecione pelo menos duas conversas para separar treino e validacao")
-    arquivos = sorted(pasta.glob("*.txt"))
-    if not arquivos:
-        raise ValueError(f"Nenhum arquivo TXT encontrado em {pasta}")
-
     conversas = []
-    # Aceita o rotulo Usuario com ou sem acento nos dados originais
-    # Uma linha vazia seguida desse rotulo marca o inicio de um novo par
-    padrao = r"(?:\A|\n\n)Usu(?:a|\u00e1)rio: "
-    for arquivo in arquivos:
-        texto = arquivo.read_text(encoding="utf-8-sig").strip()
-        if not texto:
+    vistos = pares_vistos if pares_vistos is not None else set()
+    resumo = {"pares_examinados": 0, "longos_descartados": 0, "invalidos_descartados": 0, "repetidos_descartados": 0}
+    for pergunta, resposta in iterar_pares(caminho):
+        resumo["pares_examinados"] += 1
+        if not isinstance(pergunta, str) or not isinstance(resposta, str):
+            resumo["invalidos_descartados"] += 1
             continue
-        blocos = re.split(padrao, texto)
-        if blocos[0] or len(blocos) < 2:
-            raise ValueError(f"Formato de conversa nao reconhecido em {arquivo.name}")
-        for bloco in blocos[1:]:
-            # Rejeita divisores ambiguos para nao ligar uma resposta a pergunta errada
-            if bloco.count(MARCADOR_RESPOSTA) != 1:
-                raise ValueError(f"Par sem resposta ou com rotulos ambiguos em {arquivo.name}")
-            pergunta, _, resposta = bloco.partition(MARCADOR_RESPOSTA)
-            pergunta, resposta = pergunta.strip(), resposta.strip()
-            if not pergunta or not resposta:
-                raise ValueError(f"Pergunta ou resposta vazia em {arquivo.name}")
-            if "<FIM>" in pergunta or "<FIM>" in resposta:
-                raise ValueError(f"O marcador reservado <FIM> aparece no conteudo de {arquivo.name}")
-            conversas.append((pergunta, resposta))
-            if len(conversas) == limite:
-                return conversas
-    if not conversas:
-        raise ValueError("Os arquivos nao contem conversas")
-    return conversas
+        pergunta, resposta = pergunta.strip(), resposta.strip()
+        if not pergunta or not resposta or "<FIM>" in pergunta or "<FIM>" in resposta:
+            resumo["invalidos_descartados"] += 1
+            continue
+        texto_formatado = f"{MARCADOR_USUARIO}{pergunta}{MARCADOR_RESPOSTA}{resposta}{MARCADOR_FIM}"
+        if len(texto_formatado) > TAMANHO_CONTEXTO + 1:
+            resumo["longos_descartados"] += 1
+            continue
+        chave = (normalizar_texto(pergunta), normalizar_texto(resposta))
+        if chave in vistos:
+            resumo["repetidos_descartados"] += 1
+            continue
+        vistos.add(chave)
+        conversas.append((pergunta, resposta))
+        if len(conversas) == limite:
+            break
+    resumo["selecionadas"] = len(conversas)
+    return conversas, resumo
 
 
 # Uniformiza espacos e maiusculas somente para identificar perguntas e pares repetidos
@@ -63,7 +103,7 @@ def normalizar_texto(texto: str) -> str:
 
 
 # Codifica cada par e registra onde a resposta comeca, incluindo seu marcador de fim
-def codificar_conversas(conversas: list[tuple[str, str]], tokenizador: TokenizadorCaracteres) -> list[dict]:
+def codificar_conversas(conversas: list[tuple[str, str]], tokenizador: TokenizadorCaracteres, origens: dict | None = None) -> list[dict]:
     exemplos = []
     for pergunta, resposta in conversas:
         prefixo = f"{MARCADOR_USUARIO}{pergunta}{MARCADOR_RESPOSTA}"
@@ -71,17 +111,20 @@ def codificar_conversas(conversas: list[tuple[str, str]], tokenizador: Tokenizad
         exemplos.append({
             "ids": tokenizador.codificar(texto),
             "inicio_resposta": len(prefixo),
+            "fonte": origens.get((pergunta, resposta), "personalizada") if origens else "personalizada",
         })
     return exemplos
 
 
 # Remove pares repetidos e divide grupos de perguntas antes de criar os exemplos em IDs
-def preparar_conversas(conversas: list[tuple[str, str]], fracao_treino: float = FRACAO_TREINO) -> dict:
+def preparar_conversas(conversas: list[tuple[str, str]], fracao_treino: float = FRACAO_TREINO, origens: dict | None = None) -> dict:
     if not 0 < fracao_treino < 1:
         raise ValueError("A fracao de treino deve estar entre 0 e 1")
     grupos = {}
     pares_vistos = set()
     for pergunta, resposta in conversas:
+        if len(f"{MARCADOR_USUARIO}{pergunta}{MARCADOR_RESPOSTA}{resposta}{MARCADOR_FIM}") > TAMANHO_CONTEXTO + 1:
+            raise ValueError("Uma conversa ultrapassa o contexto, selecione exemplos mais curtos")
         chave_pergunta = normalizar_texto(pergunta)
         chave_par = (chave_pergunta, normalizar_texto(resposta))
         if chave_par not in pares_vistos:
@@ -114,27 +157,53 @@ def preparar_conversas(conversas: list[tuple[str, str]], fracao_treino: float = 
         "semente": SEMENTE,
         "pares_lidos": len(conversas),
         "duplicados_removidos": len(conversas) - len(pares_vistos),
-        "treino": codificar_conversas(treino, tokenizador),
-        "validacao": codificar_conversas(validacao, tokenizador),
+        "treino": codificar_conversas(treino, tokenizador, origens),
+        "validacao": codificar_conversas(validacao, tokenizador, origens),
     }
 
 
-# Seleciona os lotes, prepara as conversas e grava um arquivo separado dos textos comuns
+# Combina as fontes em ordem fixa e informa a origem de cada par selecionado
+def reunir_fontes(fontes: dict[str, Path], limite: int):
+    conversas = []
+    origens = {}
+    resumos = {}
+    vistos = set()
+    for nome, caminho in fontes.items():
+        selecionadas, resumo = ler_conversas(caminho, limite, vistos)
+        resumo["caminho"] = str(caminho)
+        resumos[nome] = resumo
+        conversas.extend(selecionadas)
+        origens.update({par: nome for par in selecionadas})
+    if not conversas:
+        raise ValueError("Nenhuma conversa completa cabe no contexto atual")
+    return conversas, origens, resumos
+
+
+# Prepara as fontes combinadas ou uma pasta especifica e grava os dados sem executar treinamento
 def principal() -> None:
     analisador_argumentos = argparse.ArgumentParser(description="Prepara pares completos de conversa para o Numa")
-    analisador_argumentos.add_argument("--pasta", type=Path, default=PASTA_CONVERSAS)
-    analisador_argumentos.add_argument("--limite", type=int, default=LIMITE_CONVERSAS)
+    analisador_argumentos.add_argument("--pasta", type=Path, help="Usa somente esta pasta em vez das tres fontes configuradas")
+    analisador_argumentos.add_argument("--limite", type=int, default=LIMITE_CONVERSAS, help="Maximo de pares selecionados por fonte")
     analisador_argumentos.add_argument("--saida", type=Path, default=ARQUIVO_DADOS_PROCESSADOS)
     argumentos = analisador_argumentos.parse_args()
     try:
-        conversas = ler_conversas(argumentos.pasta, argumentos.limite)
-        dados = preparar_conversas(conversas)
+        fontes = {"personalizada": argumentos.pasta} if argumentos.pasta else FONTES_CONVERSAS
+        conversas, origens, resumos = reunir_fontes(fontes, argumentos.limite)
+        dados = preparar_conversas(conversas, origens=origens)
+        # Conta a distribuicao final depois da separacao por grupos de perguntas
+        for nome, resumo in resumos.items():
+            for parte in ("treino", "validacao"):
+                resumo[parte] = sum(exemplo["fonte"] == nome for exemplo in dados[parte])
+        dados["selecao"] = {"limite_por_fonte": argumentos.limite, "fontes": resumos}
         argumentos.saida.parent.mkdir(parents=True, exist_ok=True)
         argumentos.saida.write_text(json.dumps(dados, ensure_ascii=False), encoding="utf-8")
     except (OSError, ValueError) as erro:
         raise SystemExit(f"Nao foi possivel preparar as conversas: {erro}") from erro
 
-    print(f"Pares lidos: {dados['pares_lidos']}")
+    for nome, resumo in resumos.items():
+        print(f"{nome}: {resumo['selecionadas']} selecionadas | treino: {resumo['treino']} | validacao: {resumo['validacao']}")
+        print(f"  Examinadas: {resumo['pares_examinados']} | longas: {resumo['longos_descartados']} | invalidas: {resumo['invalidos_descartados']} | repetidas: {resumo['repetidos_descartados']}")
+    print(f"Total selecionado: {dados['pares_lidos']}")
     print(f"Duplicados removidos: {dados['duplicados_removidos']}")
     print(f"Conversas de treino: {len(dados['treino'])}")
     print(f"Conversas de validacao: {len(dados['validacao'])}")
