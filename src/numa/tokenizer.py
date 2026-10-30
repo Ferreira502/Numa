@@ -1,12 +1,13 @@
-# faz a conversao entre texto e IDs quando executado sozinho, 
-# permite experimentar isso pelo terminal, mas não salva os resultados
+# Converte textos em IDs de caracteres e reconstrui textos a partir desses IDs
+# Quando executado no terminal, demonstra a conversao sem salvar os resultados
 
 class TokenizadorCaracteres:
     # Cria um vocabulario com os caracteres encontrados no texto fornecido
 
+    # Cria o vocabulario em ordem fixa e associa cada caractere a um ID
     def __init__(self, texto: str) -> None:
         if not texto:
-            raise ValueError("O texto usado para criar o vocabulário não pode ser vazio")
+            raise ValueError("O texto usado para criar o vocabulario nao pode ser vazio")
 
         # A ordenacao mantem os mesmos IDs para o mesmo conjunto de caracteres
         self.caracteres = tuple(sorted(set(texto)))
@@ -14,32 +15,32 @@ class TokenizadorCaracteres:
             caractere: indice for indice, caractere in enumerate(self.caracteres)
         }
 
+    # Retorna a quantidade de caracteres conhecidos pelo tokenizador
     @property
     def tamanho_vocabulario(self) -> int:
-        # Quantidade de caracteres que o tokenizer conhece
         return len(self.caracteres)
 
-    def encode(self, texto: str) -> list[int]:
-        # Converte cada caractere do texto em seu ID
+    # Converte os caracteres do texto em IDs e rejeita caracteres desconhecidos
+    def codificar(self, texto: str) -> list[int]:
         try:
             return [self._caractere_para_id[caractere] for caractere in texto]
         except KeyError as erro:
             raise ValueError(
-                f"Caractere {erro.args[0]!r} não existe no vocabulário"
+                f"Caractere {erro.args[0]!r} nao existe no vocabulario"
             ) from erro
 
-    def decode(self, ids: list[int]) -> str:
-        # Reconstroi um texto a partir dos IDs dos caracteres
+    # Converte IDs validos nos caracteres correspondentes para reconstruir o texto
+    def decodificar(self, ids: list[int]) -> str:
         texto = []
         for indice in ids:
             if not isinstance(indice, int) or not 0 <= indice < self.tamanho_vocabulario:
-                raise ValueError(f"ID {indice!r} não existe no vocabulário")
+                raise ValueError(f"ID {indice!r} nao existe no vocabulario")
             texto.append(self.caracteres[indice])
         return "".join(texto)
 
 
-def main() -> None:
-    # Permite experimentar o tokenizer no terminal
+# Permite digitar textos e visualizar o vocabulario, os IDs e a reconstrucao
+def principal() -> None:
     print("Digite um texto para ver seus IDs. Pressione Enter sem texto para sair")
     while True:
         try:
@@ -51,12 +52,12 @@ def main() -> None:
         if not texto:
             break
 
-        tokenizer = TokenizadorCaracteres(texto)
-        ids = tokenizer.encode(texto)
-        print("Vocabulário:", dict(enumerate(tokenizer.caracteres)))
+        tokenizador = TokenizadorCaracteres(texto)
+        ids = tokenizador.codificar(texto)
+        print("Vocabulario:", dict(enumerate(tokenizador.caracteres)))
         print("IDs:", ids)
-        print("Texto reconstruído:", tokenizer.decode(ids))
+        print("Texto reconstruido:", tokenizador.decodificar(ids))
 
 
 if __name__ == "__main__":
-    main()
+    principal()
