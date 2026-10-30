@@ -43,3 +43,18 @@ O erro numérico e acompanhado junto da qualidade do texto gerado, pois uma perd
 A Numa ainda e um modelo pequeno e experimental, com contexto limitado e forte tendencia a memorizar conjuntos reduzidos de exemplos, cujas respostas não devem ser tratadas como uma fonte confiável de informação
 
 O objetivo e ampliar gradualmente a coerência, a capacidade de responder a novas formulações e a continuidade das conversas, investigando a qualidade dos dados, a arquitetura e o processo de treinamento
+
+## Como rodar
+
+Com o ambiente virtual, as dependencias e os dados locais preparados, execute no Git Bash, na raiz do projeto
+
+```bash
+source .venv/Scripts/activate
+PYTHONPATH=src python -m numa.preparar_conversas
+PYTHONPATH=src python -m numa.treinar
+PYTHONPATH=src python -m numa.chat
+```
+
+Aguarde o treinamento terminar antes de abrir o chat — se ja houver pesos compativeis salvos, o treinamento retoma o progresso anterior
+
+No chat, use `/sair` para encerrar e `/limpar` para iniciar uma nova conversa
