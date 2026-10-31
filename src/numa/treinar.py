@@ -63,8 +63,9 @@ def agrupar_por_fonte(exemplos: list[dict]) -> dict[str, list[dict]]:
 
 
 # Sorteia a fonte e o exemplo, mascarando a pergunta somente na etapa de conversas
-def criar_lote(exemplos, gerador: torch.Generator | None = None, fonte: str | None = None):
-    entrada = torch.zeros((TAMANHO_LOTE, TAMANHO_CONTEXTO), dtype=torch.long)
+def criar_lote(exemplos, gerador: torch.Generator | None = None, fonte: str | None = None,
+               tamanho_contexto: int = TAMANHO_CONTEXTO):
+    entrada = torch.zeros((TAMANHO_LOTE, tamanho_contexto), dtype=torch.long)
     alvos = torch.full_like(entrada, -100)
     if isinstance(exemplos, (ParteBlocos, ParteLinguagem, ParteMistura)):
         selecionados = [exemplos.sortear(gerador, fonte) for _ in range(TAMANHO_LOTE)]
@@ -80,7 +81,7 @@ def criar_lote(exemplos, gerador: torch.Generator | None = None, fonte: str | No
     for linha, exemplo in enumerate(selecionados):
         ids = exemplo["ids"]
         inicio_resposta = exemplo["inicio_resposta"]
-        if len(ids) > TAMANHO_CONTEXTO + 1:
+        if len(ids) > tamanho_contexto + 1:
             raise ValueError("O exemplo nao cabe no contexto, prepare novamente os dados")
         comprimento = len(ids) - 1
         entrada[linha, :comprimento] = ids[:-1]
@@ -142,7 +143,7 @@ def avaliar(modelo: ModeloNuma, treino, validacao) -> dict:
         for fonte, grupo in sorted(grupos.items()):
             soma_erros = 0.0
             for _ in range(LOTES_AVALIACAO):
-                entrada, alvos = criar_lote(grupo, gerador, fonte=fonte)
+                entrada, alvos = criar_lote(grupo, gerador, fonte=fonte, tamanho_contexto=modelo.tamanho_contexto)
                 soma_erros += calcular_erro(modelo, entrada, alvos).item()
             erros_fontes[fonte] = soma_erros / LOTES_AVALIACAO
         resultados["fontes"][nome] = erros_fontes
@@ -262,6 +263,8 @@ def principal() -> None:
         raise SystemExit(f"Confira ou prepare novamente os dados: {erro}") from erro
     if isinstance(treino, ParteLinguagem) != linguagem:
         analisador_argumentos.error("A etapa escolhida nao corresponde aos dados, confira --etapa e --dados")
+    # Os conjuntos pequenos declaram seu contexto e os leitores antigos mantem seu proprio limite
+    tamanho_contexto = dados.get("protocolo", {}).get("contexto", TAMANHO_CONTEXTO)
     casos_geracao = None
     assinatura_geracao = None
     if argumentos.avaliar_geracao:
@@ -284,7 +287,7 @@ def principal() -> None:
 
     configuracao = {
         "tamanho_vocabulario": len(dados["vocabulario"]),
-        "tamanho_contexto": TAMANHO_CONTEXTO,
+        "tamanho_contexto": tamanho_contexto,
         "dimensao_embedding": DIMENSAO_EMBEDDING,
         "num_cabecas": NUM_CABECAS,
         "num_camadas": NUM_CAMADAS,
@@ -331,7 +334,7 @@ def principal() -> None:
         melhor_passo = estado_anterior.get("melhor_passo", passo_inicial)
         melhor_proporcao = estado_anterior.get("melhor_proporcao_geracao", -1.0)
     nome_dispositivo = f"GPU: {torch.cuda.get_device_name(dispositivo)}" if dispositivo.type == "cuda" else "CPU"
-    print(f"{nome_dispositivo} | contexto: {TAMANHO_CONTEXTO} | lote: {TAMANHO_LOTE} | mais {argumentos.passos} passos", flush=True)
+    print(f"{nome_dispositivo} | contexto: {tamanho_contexto} | lote: {TAMANHO_LOTE} | mais {argumentos.passos} passos", flush=True)
     quantidade_parametros = sum(parametro.numel() for parametro in modelo.parameters())
     print(f"Arquitetura: {DIMENSAO_EMBEDDING} dimensoes | {NUM_CAMADAS} blocos | {quantidade_parametros} parametros", flush=True)
     print(f"Taxa de aprendizado: {taxa_aprendizado}", flush=True)
@@ -363,7 +366,7 @@ def principal() -> None:
             modelo.train()
             # A revisao reutiliza somente o treino da linguagem, nunca seus exemplos de validacao
             revisar = revisao_linguagem > 0 and torch.rand(()).item() < revisao_linguagem
-            entrada, alvos = criar_lote(treino_revisao if revisar else treino)
+            entrada, alvos = criar_lote(treino_revisao if revisar else treino, tamanho_contexto=tamanho_contexto)
             otimizador.zero_grad(set_to_none=True)
             erro = calcular_erro(modelo, entrada, alvos)
             if not torch.isfinite(erro):
@@ -385,6 +388,9 @@ def principal() -> None:
                 proporcao = resultado_geracao["proporcao"]
                 melhorou = proporcao > melhor_proporcao or (proporcao == melhor_proporcao and erros["validacao"] < melhor_erro)
                 print(f"Geracao na validacao: {resultado_geracao['correspondencias']}/{resultado_geracao['total']} respostas aceitas", flush=True)
+                for grupo, medida in resultado_geracao.get("grupos", {}).items():
+                    print(f"  Geracao {grupo}: {medida['correspondencias']}/{medida['total']}", flush=True)
+                print(f"  Pontuacao de selecao: {proporcao:.1%}", flush=True)
                 if melhorou:
                     melhor_proporcao = proporcao
             if melhorou:
@@ -428,7 +434,7 @@ def principal() -> None:
                 break
 
     if casos_geracao:
-        print(f"Melhor correspondencia na geracao: {melhor_proporcao:.1%} no passo {melhor_passo}")
+        print(f"Melhor pontuacao de geracao: {melhor_proporcao:.1%} no passo {melhor_passo}")
         print(f"Erro de validacao nesse checkpoint: {melhor_erro:.4f}")
     else:
         print(f"Melhor validacao: {melhor_erro:.4f} no passo {melhor_passo}")

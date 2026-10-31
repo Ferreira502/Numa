@@ -62,10 +62,21 @@ def avaliar_geracao(modelo, dados: dict, casos: list[dict]) -> dict:
             aceitas = caso.get("respostas_aceitas", [caso["referencia"]])
             corresponde = normalizar_comparacao(resposta) in {normalizar_comparacao(r) for r in aceitas}
             resultados.append({"id": caso["id"], "historico_usado": historico, "resposta": resposta,
-                               "referencia": caso["referencia"], "corresponde": corresponde})
+                               "referencia": caso["referencia"], "corresponde": corresponde,
+                               "grupo_avaliacao": caso.get("grupo_avaliacao", "geral")})
     finally:
         modelo.train(estava_treinando)
     quantidade = sum(r["corresponde"] for r in resultados)
-    return {"correspondencias": quantidade, "total": len(resultados), "proporcao": quantidade / len(resultados),
+    grupos = {}
+    for resultado in resultados:
+        grupo = grupos.setdefault(resultado["grupo_avaliacao"], {"correspondencias": 0, "total": 0})
+        grupo["total"] += 1
+        grupo["correspondencias"] += int(resultado["corresponde"])
+    for grupo in grupos.values():
+        grupo["proporcao"] = grupo["correspondencias"] / grupo["total"]
+    # Cada grupo recebe o mesmo peso para impedir que muitos casos curtos escondam falhas nos longos
+    proporcao = sum(g["proporcao"] for g in grupos.values()) / len(grupos)
+    return {"correspondencias": quantidade, "total": len(resultados), "proporcao": proporcao,
+            "proporcao_global": quantidade / len(resultados), "grupos": grupos,
             "casos": resultados, "temperatura": 0.5, "semente": 42, "caracteres": 100,
-            "criterio": "correspondencia_textual_com_respostas_aceitas_v1"}
+            "criterio": "correspondencia_textual_balanceada_por_grupo_v2"}

@@ -20,6 +20,10 @@ def validar_conversa(conversa: dict) -> None:
     for troca in conversa["trocas"]:
         if len(troca) != 2 or any(not isinstance(texto, str) or not texto.strip() for texto in troca):
             raise ValueError("Cada troca precisa de pergunta e resposta nao vazias")
+    if "fontes_turnos" in conversa:
+        fontes = conversa["fontes_turnos"]
+        if len(fontes) != len(conversa["trocas"]) or any(not isinstance(f, str) or not f for f in fontes):
+            raise ValueError("Informe uma fonte nao vazia para cada turno")
     if "respostas_aceitas" in conversa:
         aceitas = conversa["respostas_aceitas"]
         if not isinstance(aceitas, list) or len(aceitas) != len(conversa["trocas"]):
@@ -29,7 +33,9 @@ def validar_conversa(conversa: dict) -> None:
 
 
 # Codifica todos os turnos mantendo a conversa inteira na divisao indicada nos dados brutos
-def preparar_experimento(origem: Path, destino: Path) -> dict:
+def preparar_experimento(origem: Path, destino: Path, tamanho_contexto: int = TAMANHO_CONTEXTO) -> dict:
+    if type(tamanho_contexto) is not int or tamanho_contexto < 1:
+        raise ValueError("O contexto precisa ser um inteiro positivo")
     if destino.exists():
         raise ValueError("Escolha uma pasta nova para preservar o experimento anterior")
     vocabulario = json.loads((PASTA_LINGUAGEM / "vocabulario.json").read_text(encoding="utf-8"))
@@ -51,7 +57,7 @@ def preparar_experimento(origem: Path, destino: Path) -> dict:
         cobertura[parte][assunto] = cobertura[parte].get(assunto, 0) + 1
         for indice in range(len(conversa["trocas"])):
             trocas = conversa["trocas"][:indice + 1]
-            exemplo, motivo = codificar_continuacao(trocas, tokenizador, vocabulario["marcadores"])
+            exemplo, motivo = codificar_continuacao(trocas, tokenizador, vocabulario["marcadores"], tamanho_contexto)
             if motivo:
                 raise ValueError(f"{conversa['id']} turno {indice + 1}: {motivo}")
             # A mesma entrada nao pode receber respostas conflitantes nem aparecer em duas divisoes
@@ -70,13 +76,14 @@ def preparar_experimento(origem: Path, destino: Path) -> dict:
                 caso["respostas_aceitas"] = conversa["respostas_aceitas"][indice]
             casos[parte].append(caso)
             if parte in exemplos:
-                exemplo.update({"fonte": assunto, "conversa": conversa["id"]})
+                fonte = conversa["fontes_turnos"][indice] if "fontes_turnos" in conversa else assunto
+                exemplo.update({"fonte": fonte, "conversa": conversa["id"]})
                 exemplos[parte].append(exemplo)
     assuntos = set(cobertura["treino"])
     if not assuntos or any(set(cobertura[parte]) != assuntos for parte in cobertura):
         raise ValueError("Todos os assuntos precisam de conversas em treino, validacao e teste")
     # Estes casos ficam fora dos exemplos desta etapa, mas os pesos vieram de treinamentos anteriores
-    protocolo = {"cobertura_conversas": cobertura, "contexto": TAMANHO_CONTEXTO,
+    protocolo = {"cobertura_conversas": cobertura, "contexto": tamanho_contexto,
                  "sha256_origem": hashlib.sha256(origem.read_bytes()).hexdigest(),
                  "divisao": "conversas_inteiras_com_assuntos_em_todas_as_partes",
                  "limite": "Reserva desta etapa, sem garantia de ineditismo nos treinamentos anteriores",

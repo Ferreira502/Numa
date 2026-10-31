@@ -42,6 +42,8 @@ MARCADOR_FIM = "\n<FIM>\n"
 
 # Parametros do Transformer pequeno
 TAMANHO_CONTEXTO = 256
+# Mantem o padrao antigo para os experimentos salvos e define o novo contexto de conversa
+CONTEXTO_CONVERSA_LONGA = 512
 DIMENSAO_EMBEDDING = 256
 NUM_CABECAS = 4
 NUM_CAMADAS = 5

@@ -73,14 +73,15 @@ def iterar_openassistant(caminho: Path):
 
 
 # Converte um exemplo com historico sem cortar a resposta nem esconder o tema anterior
-def codificar_continuacao(trocas: list[tuple[str, str]], tokenizador, marcadores: dict):
+def codificar_continuacao(trocas: list[tuple[str, str]], tokenizador, marcadores: dict,
+                          tamanho_contexto: int = TAMANHO_CONTEXTO):
     limpas = [(normalizar_resposta(q), normalizar_resposta(r)) for q, r in trocas]
     if any(not q or not r or "<FIM>" in q or "<FIM>" in r for q, r in limpas):
         return None, "invalido"
     historico = limpas[:-1]
     pergunta, resposta = limpas[-1]
     try:
-        contexto = montar_contexto(pergunta, historico, marcadores, TAMANHO_CONTEXTO)
+        contexto = montar_contexto(pergunta, historico, marcadores, tamanho_contexto)
     except ValueError:
         return None, "contexto_longo"
     completo = "".join(marcadores["usuario"] + q + marcadores["resposta"] + r + marcadores["fim"] for q, r in historico)
@@ -88,7 +89,7 @@ def codificar_continuacao(trocas: list[tuple[str, str]], tokenizador, marcadores
     if contexto != completo:
         return None, "historico_fora_contexto"
     texto = contexto + resposta + marcadores["fim"]
-    if len(texto) > TAMANHO_CONTEXTO + 1:
+    if len(texto) > tamanho_contexto + 1:
         return None, "resposta_nao_cabe_com_historico"
     try:
         ids = tokenizador.codificar(texto)

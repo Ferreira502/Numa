@@ -47,12 +47,15 @@ def validar_exemplos(registros: list[dict], dados: dict, fonte_esperada: str | N
     if not isinstance(registros, list) or not registros:
         raise ValueError("A parte dos dados nao possui conversas")
     marcadores = validar_vocabulario(dados)
+    tamanho_contexto = dados.get("protocolo", {}).get("contexto", TAMANHO_CONTEXTO)
+    if type(tamanho_contexto) is not int or tamanho_contexto < 1:
+        raise ValueError("O contexto dos dados precisa ser um inteiro positivo")
     usuario, resposta, fim = (marcadores[nome] for nome in ("usuario", "resposta", "fim"))
     exemplos = []
     for registro in registros:
         valores = registro["ids"]
         ids = validar_ids(valores, len(dados["vocabulario"]))
-        if not permitir_longas and len(ids) > TAMANHO_CONTEXTO + 1:
+        if not permitir_longas and len(ids) > tamanho_contexto + 1:
             raise ValueError("Uma conversa ultrapassa o contexto, prepare novamente os dados")
         inicio = registro["inicio_resposta"]
         if type(inicio) is not int or not len(usuario) + len(resposta) < inicio < len(ids) - len(fim):
