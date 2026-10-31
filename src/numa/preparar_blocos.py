@@ -1,5 +1,5 @@
 # Prepara as conversas em duas passagens usando um indice temporario no disco
-# Grava blocos por fonte e por divisao, um vocabulario comum e um manifesto para o futuro leitor
+# Grava blocos por fonte e por divisao, um vocabulario comum e o manifesto usado pelo treinamento
 
 import argparse
 import hashlib
@@ -36,8 +36,14 @@ def definir_divisao(pergunta: str, fracao_treino: float, semente: int) -> tuple[
 
 
 # Filtra e registra os pares no SQLite, reunindo somente os caracteres do vocabulario na RAM
-def catalogar_conversas(fontes: dict[str, Path], conexao, limite: int, fracao_treino: float, semente: int):
-    conexao.execute("PRAGMA cache_size = -8192")
+def catalogar_conversas(fontes: dict[str, Path], conexao, limite: int, fracao_treino: float, semente: int,
+                       vocabulario_fixo: set[str] | None = None, incluir_longas: bool = False,
+                       respostas_vistas: set[str] | None = None):
+    # O import local evita um ciclo entre os preparadores que compartilham a divisao por pergunta
+    if incluir_longas:
+        from numa.ampliar_linguagem import normalizar_resposta
+    # O indice de centenas de milhares de pares cabe neste cache sem ocupar a RAM com os textos
+    conexao.execute("PRAGMA cache_size = -65536")
     conexao.execute(
         "CREATE TABLE exemplos (chave TEXT PRIMARY KEY, pergunta TEXT NOT NULL, "
         "resposta TEXT NOT NULL, fonte TEXT NOT NULL, parte TEXT NOT NULL, grupo TEXT NOT NULL)"
@@ -48,6 +54,7 @@ def catalogar_conversas(fontes: dict[str, Path], conexao, limite: int, fracao_tr
         resumo = {
             "caminho": str(caminho), "examinadas": 0, "selecionadas": 0,
             "longas": 0, "invalidas": 0, "repetidas": 0, "treino": 0, "validacao": 0,
+            "longas_incluidas": 0, "caracteres_desconhecidos": 0, "validacao_vista_na_linguagem": 0,
         }
         print(f"Lendo fonte: {fonte}", flush=True)
         for pergunta, resposta in iterar_pares(caminho):
@@ -58,16 +65,30 @@ def catalogar_conversas(fontes: dict[str, Path], conexao, limite: int, fracao_tr
                 resumo["invalidas"] += 1
                 continue
             pergunta, resposta = pergunta.strip(), resposta.strip()
+            # A pergunta original mantem a mesma divisao usada na etapa de linguagem
+            parte, grupo = definir_divisao(pergunta, fracao_treino, semente)
+            if incluir_longas:
+                pergunta, resposta = normalizar_resposta(pergunta), normalizar_resposta(resposta)
+                if vocabulario_fixo is not None:
+                    # Preserva as letras acentuadas quando apenas a forma minuscula e conhecida
+                    pergunta = "".join(c.lower() if c not in vocabulario_fixo and c.lower() in vocabulario_fixo else c for c in pergunta)
+                    resposta = "".join(c.lower() if c not in vocabulario_fixo and c.lower() in vocabulario_fixo else c for c in resposta)
             if not pergunta or not resposta or "<FIM>" in pergunta or "<FIM>" in resposta:
                 resumo["invalidas"] += 1
                 continue
             texto = f"{MARCADOR_USUARIO}{pergunta}{MARCADOR_RESPOSTA}{resposta}{MARCADOR_FIM}"
-            if len(texto) > TAMANHO_CONTEXTO + 1:
+            if vocabulario_fixo is not None and not set(texto) <= vocabulario_fixo:
+                resumo["caracteres_desconhecidos"] += 1
+                continue
+            if not incluir_longas and len(texto) > TAMANHO_CONTEXTO + 1:
                 resumo["longas"] += 1
+                continue
+            assinatura_resposta = hashlib.sha256(normalizar_texto(resposta).encode("utf-8")).hexdigest()
+            if parte == "validacao" and respostas_vistas and assinatura_resposta in respostas_vistas:
+                resumo["validacao_vista_na_linguagem"] += 1
                 continue
             par_normalizado = [normalizar_texto(pergunta), normalizar_texto(resposta)]
             chave = hashlib.sha256(json.dumps(par_normalizado, ensure_ascii=False).encode("utf-8")).hexdigest()
-            parte, grupo = definir_divisao(pergunta, fracao_treino, semente)
             cursor = conexao.execute(
                 "INSERT OR IGNORE INTO exemplos VALUES (?, ?, ?, ?, ?, ?)",
                 (chave, pergunta, resposta, fonte, parte, grupo),
@@ -77,6 +98,8 @@ def catalogar_conversas(fontes: dict[str, Path], conexao, limite: int, fracao_tr
                 continue
             caracteres.update(texto)
             resumo["selecionadas"] += 1
+            if len(texto) > TAMANHO_CONTEXTO + 1:
+                resumo["longas_incluidas"] += 1
             resumo[parte] += 1
             if resumo["selecionadas"] % 5000 == 0:
                 conexao.commit()
@@ -136,7 +159,9 @@ def remover_area_temporaria(pasta: Path, destino: Path) -> None:
 
 # Coordena as passagens e publica a pasta somente quando todos os blocos estao completos
 def preparar_em_blocos(fontes: dict[str, Path], destino: Path, tamanho_bloco: int = EXEMPLOS_POR_BLOCO,
-                      limite: int = 0, fracao_treino: float = FRACAO_TREINO, semente: int = SEMENTE) -> dict:
+                      limite: int = 0, fracao_treino: float = FRACAO_TREINO, semente: int = SEMENTE,
+                      referencia: Path | None = None, incluir_longas: bool = False,
+                      respostas_vistas: set[str] | None = None) -> dict:
     destino = destino.resolve()
     if destino.exists():
         raise ValueError(f"A pasta ja existe, escolha outra com --saida: {destino}")
@@ -144,6 +169,19 @@ def preparar_em_blocos(fontes: dict[str, Path], destino: Path, tamanho_bloco: in
         raise ValueError("Use bloco positivo, limite maior ou igual a zero e fracao de treino entre 0 e 1")
     if not fontes or any(not re.fullmatch(r"[a-zA-Z0-9_-]+", fonte) for fonte in fontes):
         raise ValueError("Os nomes das fontes devem usar letras sem acentos, numeros ou sublinhados")
+    vocabulario_referencia = None
+    if referencia is not None:
+        dados_referencia = json.loads(referencia.read_text(encoding="utf-8"))
+        vocabulario_referencia = dados_referencia["vocabulario"]
+        if not isinstance(vocabulario_referencia, list) or not vocabulario_referencia or any(
+            not isinstance(c, str) or len(c) != 1 for c in vocabulario_referencia
+        ) or vocabulario_referencia != sorted(set(vocabulario_referencia)):
+            raise ValueError("O vocabulario de referencia precisa conter caracteres unicos em ordem fixa")
+        esperados = {"usuario": MARCADOR_USUARIO, "resposta": MARCADOR_RESPOSTA, "fim": MARCADOR_FIM}
+        if dados_referencia["marcadores"] != esperados or not set("".join(esperados.values())) <= set(vocabulario_referencia):
+            raise ValueError("Os marcadores nao correspondem aos pesos da etapa de linguagem")
+    if incluir_longas and vocabulario_referencia is None:
+        raise ValueError("Informe o vocabulario fixo para preparar o ajuste com conversas longas")
     destino.parent.mkdir(parents=True, exist_ok=True)
     temporaria = destino.with_name(f".{destino.name}.preparando_{uuid.uuid4().hex}")
     temporaria.mkdir()
@@ -151,12 +189,19 @@ def preparar_em_blocos(fontes: dict[str, Path], destino: Path, tamanho_bloco: in
     try:
         indice = temporaria / "indice.sqlite"
         conexao = sqlite3.connect(indice)
-        caracteres, resumos = catalogar_conversas(fontes, conexao, limite, fracao_treino, semente)
+        # Este catalogo e temporario e reconstruivel, sem alterar as fontes originais
+        conexao.execute("PRAGMA journal_mode = OFF")
+        conexao.execute("PRAGMA synchronous = OFF")
+        # Os pequenos indices de ordenacao ficam na RAM em vez de usar a pasta temporaria do disco C
+        conexao.execute("PRAGMA temp_store = MEMORY")
+        caracteres, resumos = catalogar_conversas(fontes, conexao, limite, fracao_treino, semente,
+                                                 set(vocabulario_referencia) if vocabulario_referencia else None,
+                                                 incluir_longas, respostas_vistas)
         # Uma preparacao muito pequena pode nao gerar exemplos nas duas partes pelo hash
         for parte in ("treino", "validacao"):
             if not sum(resumo[parte] for resumo in resumos.values()):
                 raise ValueError(f"A parte {parte} ficou vazia, aumente a selecao ou ajuste a semente")
-        tokenizador = TokenizadorCaracteres("".join(sorted(caracteres)))
+        tokenizador = TokenizadorCaracteres("".join(vocabulario_referencia or sorted(caracteres)))
         marcadores = {"usuario": MARCADOR_USUARIO, "resposta": MARCADOR_RESPOSTA, "fim": MARCADOR_FIM}
         vocabulario = {"vocabulario": list(tokenizador.caracteres), "marcadores": marcadores}
         (temporaria / "vocabulario.json").write_text(json.dumps(vocabulario, ensure_ascii=False), encoding="utf-8")
@@ -167,6 +212,8 @@ def preparar_em_blocos(fontes: dict[str, Path], destino: Path, tamanho_bloco: in
             "exemplos_por_bloco": tamanho_bloco, "limite_por_fonte": limite,
             "semente": semente, "fracao_treino": fracao_treino,
             "divisao": "sha256_pergunta_normalizada_v1", "fontes": resumos, "partes": partes,
+            "esquema_exemplos": "conversas_completas_v2" if incluir_longas else "conversas_curtas_v1",
+            "vocabulario_fixo": referencia is not None,
         }
         (temporaria / "manifesto.json").write_text(json.dumps(manifesto, ensure_ascii=False, indent=2), encoding="utf-8")
         conexao.close()
@@ -204,7 +251,7 @@ def principal() -> None:
     print(f"Validacao: {manifesto['partes']['validacao']['total']} exemplos")
     print(f"Vocabulario: {manifesto['tamanho_vocabulario']} caracteres")
     print(f"Blocos salvos em: {argumentos.saida.resolve()}")
-    print("Preparacao concluida, a leitura destes blocos pelo treinamento sera a proxima etapa")
+    print("Preparacao concluida, dados prontos para o treinamento sem executa-lo agora")
 
 
 if __name__ == "__main__":

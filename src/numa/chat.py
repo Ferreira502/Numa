@@ -18,6 +18,7 @@ with warnings.catch_warnings():
 from numa.configuracao import ARQUIVO_CHECKPOINT, CARACTERES_GERADOS, TEMPERATURA
 from numa.modelo import ModeloNuma
 from numa.tokenizer import TokenizadorCaracteres
+from numa.contexto import montar_contexto
 
 
 # Adiciona cores somente em terminais interativos que permitem essa formatacao
@@ -69,22 +70,6 @@ def carregar_modelo(caminho: Path = ARQUIVO_CHECKPOINT):
     return modelo, tokenizador, marcadores
 
 
-# Formata a pergunta e inclui as trocas recentes completas que couberem no contexto
-def montar_contexto(pergunta: str, historico: list[tuple[str, str]], marcadores: dict, tamanho_contexto: int) -> str:
-    if not pergunta.strip():
-        raise ValueError("Digite uma mensagem")
-    contexto = f"{marcadores['usuario']}{pergunta}{marcadores['resposta']}"
-    if len(contexto) > tamanho_contexto:
-        limite = tamanho_contexto - len(marcadores["usuario"]) - len(marcadores["resposta"])
-        raise ValueError(f"A mensagem deve ter no maximo {limite} caracteres para caber no contexto")
-    for mensagem, resposta in reversed(historico):
-        troca = f"{marcadores['usuario']}{mensagem}{marcadores['resposta']}{resposta}{marcadores['fim']}"
-        if len(troca) + len(contexto) > tamanho_contexto:
-            break
-        contexto = troca + contexto
-    return contexto
-
-
 # Gera apenas a resposta usando temperatura e encerra no marcador de fim ou na proxima fala
 @torch.inference_mode()
 def gerar_resposta(
@@ -94,20 +79,24 @@ def gerar_resposta(
     marcadores: dict,
     quantidade: int = CARACTERES_GERADOS,
     temperatura: float = TEMPERATURA,
+    gerador: torch.Generator | None = None,
 ) -> str:
     if not contexto or len(contexto) > modelo.tamanho_contexto:
         raise ValueError("O contexto deve ser nao vazio e caber no limite do modelo")
     if quantidade < 1 or not math.isfinite(temperatura) or temperatura <= 0:
         raise ValueError("A quantidade de caracteres e a temperatura devem ser positivas e finitas")
     modelo.eval()
-    ids = torch.tensor([tokenizador.codificar(contexto)], dtype=torch.long)
+    dispositivo = next(modelo.parameters()).device
+    ids = torch.tensor([tokenizador.codificar(contexto)], dtype=torch.long, device=dispositivo)
     resposta = ""
     paradas = (marcadores["fim"], "\n" + marcadores["usuario"])
     for _ in range(quantidade):
         # A janela desliza quando a pergunta e a resposta ultrapassam o limite de contexto
         logits = modelo(ids[:, -modelo.tamanho_contexto:])[:, -1, :]
         probabilidades = torch.softmax(logits / temperatura, dim=-1)
-        proximo = torch.multinomial(probabilidades, num_samples=1)
+        # O gerador local fica na CPU para comparar os mesmos sorteios entre avaliacoes
+        amostra = probabilidades.cpu() if gerador is not None else probabilidades
+        proximo = torch.multinomial(amostra, num_samples=1, generator=gerador).to(dispositivo)
         ids = torch.cat((ids, proximo), dim=1)
         resposta += tokenizador.decodificar([proximo.item()])
         for parada in paradas:

@@ -26,7 +26,7 @@ class BlocoTransformer(nn.Module):
         # LayerNorm normaliza os valores de cada posicao para estabilizar o calculo
         # Ela tambem aprende uma escala e um bias, inicializados em 1 e 0
         self.norma_atencao = nn.LayerNorm(dimensao_embedding)
-        # Com dimensao 64 e 4 cabecas, cada cabeca trabalha com 16 valores
+        # Cada cabeca trabalha com dimensao_embedding / num_cabecas valores
         # Cada cabeca pode aprender relacoes diferentes entre posicoes do texto
         # A atencao possui matrizes treinaveis para consultas, chaves e valores
         # O PyTorch inicializa essas matrizes e a projecao de saida automaticamente
@@ -39,10 +39,11 @@ class BlocoTransformer(nn.Module):
         self.norma_mlp = nn.LayerNorm(dimensao_embedding)
         # Esta MLP e a rede multicamada presente dentro de cada bloco
         # nn.Linear faz a conta saida = entrada @ pesos.T + bias
-        # Linear(64, 256) tem 256 neuronios, 64 * 256 pesos e 256 biases
+        # A primeira Linear possui 4 * dimensao_embedding neuronios
+        # Seus pesos formam uma matriz de dimensao_embedding por 4 * dimensao_embedding
         # Seus pesos e biases comecam aleatorios, seguindo a regra padrao do PyTorch
         # GELU aplica uma ativacao nao linear para aprender relacoes mais complexas
-        # Linear(256, 64) reduz o resultado para 64 valores novamente
+        # A segunda Linear reduz o resultado para dimensao_embedding valores novamente
         # Dropout zera parte dos valores durante o treino para ajudar a generalizar
         self.mlp = nn.Sequential(
             nn.Linear(dimensao_embedding, 4 * dimensao_embedding),
@@ -54,7 +55,7 @@ class BlocoTransformer(nn.Module):
     # Aplica a atencao e a MLP com conexoes residuais para transformar a sequencia
     def forward(self, x: torch.Tensor, mascara: torch.Tensor) -> torch.Tensor:
         # forward descreve o caminho dos dados pela rede
-        # Aqui x tem formato [lote, comprimento do texto, 64]
+        # Aqui x tem formato [lote, comprimento do texto, dimensao_embedding]
         normalizado = self.norma_atencao(x)
         # Usamos o proprio texto como origem das consultas, chaves e valores
         # As projecoes internas criam representacoes diferentes para cada papel
