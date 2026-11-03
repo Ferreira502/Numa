@@ -35,10 +35,10 @@ from numa.configuracao import (
     TAXA_AJUSTE_CONVERSAS,
 )
 from numa.modelo import ModeloNuma
-from numa.dados_treinamento import LeitorBlocos, ParteBlocos, carregar_conversas
-from numa.dados_linguagem import LeitorLinguagem, ParteLinguagem
-from numa.dados_mistos import LeitorMistura, ParteMistura
-from numa.validar_geracao import carregar_casos_validacao, avaliar_geracao
+from numa.interno.dados_treinamento import LeitorBlocos, ParteBlocos, carregar_conversas
+from numa.interno.dados_linguagem import LeitorLinguagem, ParteLinguagem
+from numa.interno.dados_mistos import LeitorMistura, ParteMistura
+from numa.interno.validar_geracao import carregar_casos_validacao, avaliar_geracao
 
 
 # Escolhe CUDA quando disponivel ou permite selecionar a CPU explicitamente
@@ -201,7 +201,7 @@ def inicializar_conversas(caminho: Path, modelo: ModeloNuma, dados: dict, config
 
 
 # Prepara o treinamento, retoma o progresso disponivel e executa mais passos de aprendizado
-def principal() -> None:
+def principal(argumentos_cli: list[str] | None = None) -> None:
     analisador_argumentos = argparse.ArgumentParser(description="Treina o Numa por etapas")
     analisador_argumentos.add_argument("--etapa", choices=("linguagem", "conversas", "continuidade"), default="conversas")
     analisador_argumentos.add_argument("--dados", type=Path)
@@ -220,7 +220,7 @@ def principal() -> None:
     analisador_argumentos.add_argument("--avaliar-geracao", type=Path,
                                       help="Casos de validacao para selecionar pesos por respostas completas aceitas")
     analisador_argumentos.add_argument("--intervalo-geracao", type=int, default=250)
-    argumentos = analisador_argumentos.parse_args()
+    argumentos = analisador_argumentos.parse_args(argumentos_cli)
     if argumentos.passos < 1 or argumentos.paciencia < 0:
         analisador_argumentos.error("Use passos positivos e paciencia maior ou igual a zero")
     if argumentos.intervalo_geracao < INTERVALO_AVALIACAO or argumentos.intervalo_geracao % INTERVALO_AVALIACAO:

@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from numa.configuracao import PASTA_LINGUAGEM, RAIZ_PROJETO, TAMANHO_CONTEXTO
-from numa.preparar_continuidade import codificar_continuacao
+from numa.experimentos.preparar_continuidade import codificar_continuacao
 from numa.tokenizer import TokenizadorCaracteres
 
 

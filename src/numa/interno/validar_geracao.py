@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from numa.chat import gerar_resposta, torch
-from numa.contexto import montar_contexto
+from numa.interno.contexto import montar_contexto
 from numa.tokenizer import TokenizadorCaracteres
 
 

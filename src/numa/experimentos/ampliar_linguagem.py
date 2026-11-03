@@ -14,9 +14,9 @@ import uuid
 from pathlib import Path
 
 from numa.configuracao import FONTES_CONVERSAS, PASTA_LINGUAGEM, PASTA_LINGUAGEM_BASE, SEMENTE, TAMANHO_CONTEXTO
-from numa.preparar_blocos import definir_divisao, remover_area_temporaria
-from numa.preparar_conversas import iterar_pares, normalizar_texto
-from numa.preparar_linguagem import gravar_ids
+from numa.experimentos.preparar_blocos import definir_divisao, remover_area_temporaria
+from numa.experimentos.preparar_conversas import iterar_pares, normalizar_texto
+from numa.experimentos.preparar_linguagem import gravar_ids
 from numa.tokenizer import TokenizadorCaracteres
 
 

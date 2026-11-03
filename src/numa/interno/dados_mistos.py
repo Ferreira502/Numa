@@ -8,7 +8,7 @@ from pathlib import Path
 import torch
 
 from numa.configuracao import RAIZ_PROJETO
-from numa.dados_treinamento import LeitorBlocos, ParteBlocos
+from numa.interno.dados_treinamento import LeitorBlocos, ParteBlocos
 
 
 class LeitorMistura:

@@ -4,7 +4,7 @@
 import argparse
 from pathlib import Path
 
-from numa.testar_linguagem import carregar_modelo, torch
+from numa.experimentos.testar_linguagem import carregar_modelo, torch
 from numa.configuracao import ARQUIVO_MANIFESTO_LINGUAGEM
 from numa.treinar import avaliar, carregar_dados, salvar_checkpoint, selecionar_dispositivo
 

@@ -8,8 +8,8 @@ import sqlite3
 from pathlib import Path
 
 from numa.configuracao import FONTES_CONVERSAS, PASTA_AJUSTE_CONVERSAS, PASTA_LINGUAGEM, SEMENTE
-from numa.preparar_blocos import preparar_em_blocos
-from numa.preparar_conversas import normalizar_texto
+from numa.experimentos.preparar_blocos import preparar_em_blocos
+from numa.experimentos.preparar_conversas import normalizar_texto
 
 
 # Identifica respostas reservadas ao treino de linguagem para evitar reutiliza-las como validacao nova

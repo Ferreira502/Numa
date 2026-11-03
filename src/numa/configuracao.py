@@ -63,3 +63,10 @@ ARQUIVO_CHECKPOINT = RAIZ_PROJETO / "modelos" / "numa_conversas_ajuste_256.pt"
 # Parametros de geracao de texto
 CARACTERES_GERADOS = 200
 TEMPERATURA = 0.8
+
+# Fluxo unico para adicionar TXT e treinar pelo comando python -m numa
+PASTA_NOVOS_DATASETS = PASTA_DADOS_BRUTOS / "novos"
+PASTA_DADOS_AUTOMATICOS = RAIZ_PROJETO / "dados/processados/automatico"
+PASTA_MODELOS_AUTOMATICOS = RAIZ_PROJETO / "modelos/automatico"
+PASTA_BASE_AUTOMATICA = RAIZ_PROJETO / "dados/processados/etiqueta_conversa_512"
+PASSOS_AUTOMATICOS = 1000

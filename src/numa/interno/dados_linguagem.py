@@ -10,7 +10,7 @@ from pathlib import Path
 import torch
 
 from numa.configuracao import BLOCOS_EM_CACHE, TAMANHO_CONTEXTO
-from numa.dados_treinamento import validar_vocabulario
+from numa.interno.dados_treinamento import validar_vocabulario
 
 
 class LeitorLinguagem:

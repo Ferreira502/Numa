@@ -8,7 +8,7 @@ import math
 from pathlib import Path
 
 from numa.chat import carregar_modelo, gerar_resposta, torch
-from numa.contexto import montar_contexto
+from numa.interno.contexto import montar_contexto
 from numa.configuracao import RAIZ_PROJETO
 
 

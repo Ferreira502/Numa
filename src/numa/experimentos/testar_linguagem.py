@@ -12,7 +12,7 @@ with warnings.catch_warnings():
     import torch
 
 from numa.configuracao import ARQUIVO_CHECKPOINT_LINGUAGEM, CARACTERES_GERADOS, SEMENTE, TEMPERATURA
-from numa.dados_treinamento import validar_vocabulario
+from numa.interno.dados_treinamento import validar_vocabulario
 from numa.modelo import ModeloNuma
 from numa.tokenizer import TokenizadorCaracteres
 

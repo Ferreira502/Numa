@@ -50,9 +50,7 @@ Com o ambiente virtual, as dependencias e os dados locais preparados, execute no
 
 ```bash
 source .venv/Scripts/activate
-PYTHONPATH=src python -m numa.preparar_conversas
-PYTHONPATH=src python -m numa.treinar
-PYTHONPATH=src python -m numa.chat
+PYTHONPATH=src python -m numa
 ```
 
 Aguarde o treinamento terminar antes de abrir o chat — se ja houver pesos compativeis salvos, o treinamento retoma o progresso anterior

@@ -6,7 +6,7 @@ Os experimentos antigos mantem seu contexto original e o novo treino le 512 do p
 
 ## Pesos preservados
 
-`numa.ampliar_contexto` copiou `modelos/numa_conversas_variadas_256.pt` para `modelos/numa_contexto_512_inicial.pt`
+`numa.experimentos.ampliar_contexto` copiou `modelos/numa_conversas_variadas_256.pt` para `modelos/numa_contexto_512_inicial.pt`
 Todos os pesos antigos e as primeiras 256 linhas de `embedding_posicao.weight` foram preservados exatamente
 Somente as 256 linhas adicionais receberam valores iniciais novos, usando semente 42
 A origem, seu SHA256 e seu passo de treinamento estao registrados no checkpoint de inicializacao
@@ -24,7 +24,7 @@ Nenhum treinamento foi executado nessa verificacao
 Eles incluem pedidos para recuperar um nome, valor, tarefa ou assunto citado anteriormente
 Cada conversa inteira fica somente em treino, validacao ou teste
 
-`numa.preparar_contexto_512` reuniu esses dialogos, o bate-papo natural e as conversas variadas
+`numa.experimentos.preparar_contexto_512` reuniu esses dialogos, o bate-papo natural e as conversas variadas
 O conjunto novo fica em `dados/processados/conversas_contexto_512`
 Ele tem 498 exemplos de treino, 84 de validacao e 70 de teste
 Todos os exemplos do conjunto de revisao anterior foram mantidos em suas divisoes

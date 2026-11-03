@@ -10,7 +10,7 @@ from pathlib import Path
 import torch
 
 from numa.configuracao import BLOCOS_EM_CACHE, TAMANHO_CONTEXTO
-from numa.preparar_blocos import definir_divisao
+from numa.interno.divisao import definir_divisao
 
 
 # Confere a ordem dos caracteres e a presenca dos marcadores no vocabulario comum

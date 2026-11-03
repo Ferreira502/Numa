@@ -21,18 +21,9 @@ from numa.configuracao import (
     SEMENTE,
     TAMANHO_CONTEXTO,
 )
-from numa.preparar_conversas import codificar_conversas, iterar_pares, normalizar_texto
+from numa.experimentos.preparar_conversas import codificar_conversas, iterar_pares, normalizar_texto
 from numa.tokenizer import TokenizadorCaracteres
-
-
-# Define a divisao pela pergunta normalizada, sem depender da ordem ou quantidade de exemplos
-def definir_divisao(pergunta: str, fracao_treino: float, semente: int) -> tuple[str, str]:
-    normalizada = normalizar_texto(pergunta)
-    grupo = hashlib.sha256(normalizada.encode("utf-8")).hexdigest()
-    assinatura = hashlib.sha256(f"{semente}:{grupo}".encode("ascii")).digest()
-    numero = int.from_bytes(assinatura[:8], "big")
-    parte = "treino" if numero < int(fracao_treino * 2**64) else "validacao"
-    return parte, grupo
+from numa.interno.divisao import definir_divisao
 
 
 # Filtra e registra os pares no SQLite, reunindo somente os caracteres do vocabulario na RAM
@@ -41,7 +32,7 @@ def catalogar_conversas(fontes: dict[str, Path], conexao, limite: int, fracao_tr
                        respostas_vistas: set[str] | None = None):
     # O import local evita um ciclo entre os preparadores que compartilham a divisao por pergunta
     if incluir_longas:
-        from numa.ampliar_linguagem import normalizar_resposta
+        from numa.experimentos.ampliar_linguagem import normalizar_resposta
     # O indice de centenas de milhares de pares cabe neste cache sem ocupar a RAM com os textos
     conexao.execute("PRAGMA cache_size = -65536")
     conexao.execute(

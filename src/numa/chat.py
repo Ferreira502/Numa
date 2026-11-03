@@ -18,7 +18,7 @@ with warnings.catch_warnings():
 from numa.configuracao import ARQUIVO_CHECKPOINT, CARACTERES_GERADOS, TEMPERATURA
 from numa.modelo import ModeloNuma
 from numa.tokenizer import TokenizadorCaracteres
-from numa.contexto import montar_contexto
+from numa.interno.contexto import montar_contexto
 
 
 # Adiciona cores somente em terminais interativos que permitem essa formatacao
@@ -106,12 +106,12 @@ def gerar_resposta(
 
 
 # Carrega os pesos e recebe mensagens, mantendo o historico enquanto o chat estiver aberto
-def principal() -> None:
+def principal(argumentos_cli: list[str] | None = None) -> None:
     analisador_argumentos = argparse.ArgumentParser(description="Conversa com o modelo Numa treinado")
     analisador_argumentos.add_argument("--modelo", type=Path, default=ARQUIVO_CHECKPOINT)
     analisador_argumentos.add_argument("--caracteres", type=int, default=CARACTERES_GERADOS)
     analisador_argumentos.add_argument("--temperatura", type=float, default=TEMPERATURA)
-    argumentos = analisador_argumentos.parse_args()
+    argumentos = analisador_argumentos.parse_args(argumentos_cli)
     if argumentos.caracteres < 1:
         analisador_argumentos.error("A quantidade de caracteres deve ser positiva")
     if not math.isfinite(argumentos.temperatura) or argumentos.temperatura <= 0:

@@ -19,6 +19,7 @@ from numa.configuracao import (
     TAMANHO_CONTEXTO,
 )
 from numa.tokenizer import TokenizadorCaracteres
+from numa.interno.divisao import normalizar_texto
 
 
 # Extrai uma pergunta e sua resposta sem aceitar rotulos ambiguos no mesmo bloco
@@ -114,11 +115,6 @@ def ler_conversas(caminho: Path, limite: int, pares_vistos: set | None = None) -
             break
     resumo["selecionadas"] = len(conversas)
     return conversas, resumo
-
-
-# Uniformiza espacos e maiusculas somente para identificar perguntas e pares repetidos
-def normalizar_texto(texto: str) -> str:
-    return " ".join(texto.split()).casefold()
 
 
 # Codifica cada par e registra onde a resposta comeca, incluindo seu marcador de fim

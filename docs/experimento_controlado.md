@@ -7,7 +7,7 @@ Os dialogos foram escritos manualmente para este teste educacional, sem gerar re
 ## Dados
 
 - `dados/brutos/experimento_controlado/dialogos.jsonl`: conversas editaveis com identificador, assunto, divisao e trocas de pergunta e resposta
-- `src/numa/preparar_experimento.py`: verifica a cobertura, codifica os textos usando os mesmos IDs e separa os exemplos de cada conversa
+- `src/numa/experimentos/preparar_experimento.py`: verifica a cobertura, codifica os textos usando os mesmos IDs e separa os exemplos de cada conversa
 - `dados/processados/experimento_controlado_256/dados.json`: 42 exemplos de treino e 14 de validacao, distribuidos entre sete assuntos
 - `protocolo.json`: cobertura por assunto, identificacao do arquivo de origem e limites da avaliacao
 - `testes_treino.jsonl`, `testes_validacao.jsonl` e `testes_teste.jsonl`: cenarios para gerar respostas completas e revisar o comportamento
@@ -44,7 +44,7 @@ Uma segunda execucao com a mesma saida retoma o ultimo estado do experimento
 ## Comparacao depois do treino
 
 ```bash
-PYTHONPATH=src python -m numa.avaliar_dialogos \
+PYTHONPATH=src python -m numa.experimentos.avaliar_dialogos \
   --modelo modelos/numa_experimento_256.pt \
   --testes dados/processados/experimento_controlado_256/sondas.jsonl \
   --caracteres 100 --temperatura 0.5 --semente 42 \

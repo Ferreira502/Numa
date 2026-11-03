@@ -12,7 +12,7 @@ Os valores, as respostas curtas e as distancias variam entre os exercicios
 As quantidades incluem combinacoes de roteiros sinteticos e nao representam conversas humanas independentes
 Duas combinacoes de teste foram descartadas por ultrapassar 512 caracteres, antes de avaliar qualquer resposta do modelo
 
-`numa.revisar_contexto_512` ja preparou `dados/processados/contexto_512_revisado`
+`numa.experimentos.revisar_contexto_512` ja preparou `dados/processados/contexto_512_revisado`
 O conjunto tem 1218 exemplos de treino, 168 de validacao e 148 casos de teste
 Os exemplos anteriores continuam em suas divisoes e as entradas dos testes antigos foram preservadas
 Somente as alternativas aceitas da validacao foram complementadas em arquivos novos
@@ -69,6 +69,6 @@ Nao foi executado treinamento durante a preparacao ou os testes de carregamento
 PYTHONPATH=src python -m numa.chat --modelo modelos/numa_memoria_revisada_512.pt --temperatura 0.5
 ```
 
-Avalie tambem os casos reservados em `testes_teste.jsonl` com `numa.avaliar_dialogos`
+Avalie tambem os casos reservados em `testes_teste.jsonl` com `numa.experimentos.avaliar_dialogos`
 O contexto permanece em 512 caracteres e informacoes mais antigas continuam saindo da janela
 Aumentar os exemplos e corrigir a selecao nao garante uma conversa geral ou memoria permanente

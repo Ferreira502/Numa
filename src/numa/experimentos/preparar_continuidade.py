@@ -14,9 +14,9 @@ from numa.configuracao import (
     ARQUIVO_MANIFESTO_AJUSTE, FRACAO_TREINO, PASTA_CONTINUIDADE, RAIZ_PROJETO,
     SEMENTE, TAMANHO_CONTEXTO,
 )
-from numa.contexto import montar_contexto
-from numa.preparar_blocos import definir_divisao, remover_area_temporaria
-from numa.ampliar_linguagem import normalizar_resposta
+from numa.interno.contexto import montar_contexto
+from numa.experimentos.preparar_blocos import definir_divisao, remover_area_temporaria
+from numa.experimentos.ampliar_linguagem import normalizar_resposta
 from numa.tokenizer import TokenizadorCaracteres
 
 

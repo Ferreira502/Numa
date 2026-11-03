@@ -10,7 +10,7 @@ As formulacoes e respostas novas estao em `dados/brutos/conversas_variadas`
 `variacoes.json` associa perguntas e seguimentos ao significado definido para cada assunto
 `adicionais.jsonl` acrescenta validacao e seis conversas curtas de tres turnos
 `respostas_aceitas.json` descreve alternativas corretas para comparar respostas curtas na validacao
-`numa.ampliar_experimento` combina estas formulacoes com os registros antigos sem mover as divisoes anteriores
+`numa.experimentos.ampliar_experimento` combina estas formulacoes com os registros antigos sem mover as divisoes anteriores
 
 A preparacao ja foi executada em `dados/processados/conversas_variadas_256`
 O conjunto tem 354 exemplos de treino, 28 de validacao e os mesmos 14 casos de teste reservados anteriormente
@@ -50,7 +50,7 @@ Os exemplos reservados sao desta etapa e nao tem garantia de ineditismo em todos
 ## Avaliacao depois de treinar
 
 ```bash
-PYTHONPATH=src python -m numa.avaliar_dialogos \
+PYTHONPATH=src python -m numa.experimentos.avaliar_dialogos \
   --modelo modelos/numa_conversas_variadas_256.pt \
   --testes dados/processados/conversas_variadas_256/testes_teste.jsonl \
   --caracteres 100 --temperatura 0.5 --semente 42 \

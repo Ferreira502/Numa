@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from numa.configuracao import RAIZ_PROJETO
-from numa.preparar_experimento import preparar_experimento
+from numa.experimentos.preparar_experimento import preparar_experimento
 
 
 # Combina somente as formulacoes de treino e as respostas definidas manualmente para cada assunto

@@ -15,7 +15,7 @@ from numa.configuracao import (
     FONTES_LINGUAGEM, FRACAO_TREINO, MARCADOR_FIM, MARCADOR_RESPOSTA,
     MARCADOR_USUARIO, PASTA_BLOCOS, PASTA_LINGUAGEM_BASE, TAMANHO_CONTEXTO,
 )
-from numa.preparar_blocos import remover_area_temporaria
+from numa.experimentos.preparar_blocos import remover_area_temporaria
 from numa.tokenizer import TokenizadorCaracteres
 
 

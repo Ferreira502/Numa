@@ -3,7 +3,7 @@
 
 import json
 from numa.configuracao import CONTEXTO_CONVERSA_LONGA, RAIZ_PROJETO
-from numa.preparar_experimento import preparar_experimento
+from numa.experimentos.preparar_experimento import preparar_experimento
 
 
 # Prepara a mistura com historicos completos de ate 512 caracteres sem alterar pesos

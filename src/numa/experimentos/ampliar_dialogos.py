@@ -8,8 +8,8 @@ import json
 from pathlib import Path
 
 from numa.configuracao import ARQUIVO_MANIFESTO_AJUSTE, PASTA_LINGUAGEM, RAIZ_PROJETO, TAMANHO_CONTEXTO
-from numa.contexto import montar_contexto
-from numa.preparar_continuidade import preparar_continuidade
+from numa.interno.contexto import montar_contexto
+from numa.experimentos.preparar_continuidade import preparar_continuidade
 from numa.tokenizer import TokenizadorCaracteres
 
 

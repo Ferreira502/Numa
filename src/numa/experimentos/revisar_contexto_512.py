@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 
 from numa.configuracao import RAIZ_PROJETO, PASTA_LINGUAGEM, CONTEXTO_CONVERSA_LONGA
-from numa.preparar_continuidade import codificar_continuacao
-from numa.preparar_experimento import preparar_experimento
+from numa.experimentos.preparar_continuidade import codificar_continuacao
+from numa.experimentos.preparar_experimento import preparar_experimento
 from numa.tokenizer import TokenizadorCaracteres
 
 
