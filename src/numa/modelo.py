@@ -42,12 +42,12 @@ class BlocoTransformer(nn.Module):
         # A primeira Linear possui 4 * dimensao_embedding neuronios
         # Seus pesos formam uma matriz de dimensao_embedding por 4 * dimensao_embedding
         # Seus pesos e biases comecam aleatorios, seguindo a regra padrao do PyTorch
-        # GELU aplica uma ativacao nao linear para aprender relacoes mais complexas
+        # ReLU zera valores negativos e preserva os positivos para introduzir nao linearidade
         # A segunda Linear reduz o resultado para dimensao_embedding valores novamente
         # Dropout zera parte dos valores durante o treino para ajudar a generalizar
         self.mlp = nn.Sequential(
             nn.Linear(dimensao_embedding, 4 * dimensao_embedding),
-            nn.GELU(),
+            nn.ReLU(),
             nn.Linear(4 * dimensao_embedding, dimensao_embedding),
             nn.Dropout(dropout),
         )
